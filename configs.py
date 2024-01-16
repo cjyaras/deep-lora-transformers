@@ -7,7 +7,7 @@ from data import task_to_keys
 @dataclass
 class ModelArguments:
     # pretrain_model: str = "bert-base-cased"
-    pretrain_model = "roberta-base"
+    pretrain_model: str = "roberta-base"
 
 
 @dataclass
