@@ -25,8 +25,8 @@ class TrainArguments:
     finetune_strategy: str = "lora2"
     seed: int = 1
     num_train_epochs: int = 2000
-    per_device_train_batch_size: int = 4
-    per_device_eval_batch_size: int = 4
+    per_device_train_batch_size: int = 1
+    per_device_eval_batch_size: int = 1
     warmup_steps: int = 0
     learning_rate: float = 2e-5
     weight_decay: float = 0.0

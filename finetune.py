@@ -36,9 +36,11 @@ def finetune(
     train_args: configs.TrainArguments,
 ):
     # Tokenizer
+    print("Initializing tokenizer...")
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_args.pretrain_model)
 
     # Dataset
+    print("Initializing dataset...")
     train_dataset, eval_dataset, num_labels, is_regression = data.load_dataset(
         data_args.finetune_task,
         tokenizer,
@@ -270,7 +272,9 @@ def finetune(
 
             epochs.desc = f"Epoch ... {epoch + 1}/{train_args.num_train_epochs}"
     else:
-        print("SGD since len(dataset) != batch_size")
+        print(
+            f"SGD since {len(train_dataset)} = len(dataset) != batch_size = {train_batch_size}"
+        )
         for epoch in epochs:
             train_metrics = []
             rng, input_rng = jax.random.split(rng)
