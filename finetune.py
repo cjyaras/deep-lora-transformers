@@ -63,6 +63,8 @@ def finetune(
     train_batch_size = jax.local_device_count() * train_args.per_device_train_batch_size
     eval_batch_size = jax.local_device_count() * train_args.per_device_eval_batch_size
 
+    assert train_batch_size <= len(train_dataset), "Batch size too large for dataset"
+
     learning_rate_fn = train.create_learning_rate_fn(
         train_ds_size=len(train_dataset),
         train_batch_size=train_batch_size,
@@ -187,6 +189,8 @@ def finetune(
     ), "Tensorboard is required for logging but is not installed."
 
     experiment_name = f"{model_args.pretrain_model}-{data_args.finetune_task}-{train_args.finetune_strategy}"
+    if data_args.max_train_samples is not None:
+        experiment_name += f"-{len(train_dataset)}"
     summary_writer = SummaryWriter(experiment_name)
 
     steps_per_epoch = len(train_dataset) // train_batch_size
@@ -227,7 +231,7 @@ def finetune(
 
             if cur_step % train_args.eval_steps == 0 or cur_step % total_steps == 0:
                 # evaluate
-                eval_loader_pbar = tqdm(data.glue_eval_data_collator(eval_dataset, eval_batch_size), leave=False)  # type: ignore
+                eval_loader_pbar = tqdm(data.glue_eval_data_collator(eval_dataset, eval_batch_size), leave=False, total=math.ceil(len(eval_dataset) / eval_batch_size))  # type: ignore
                 eval_loader_pbar.set_description(f"Evaluating ")
                 for eval_batch in eval_loader_pbar:
                     labels = eval_batch.pop("labels")  # type: ignore
@@ -287,7 +291,7 @@ def finetune(
 
                 if cur_step % train_args.eval_steps == 0 or cur_step % total_steps == 0:
                     # evaluate
-                    eval_loader_pbar = tqdm(data.glue_eval_data_collator(eval_dataset, eval_batch_size), leave=False)  # type: ignore
+                    eval_loader_pbar = tqdm(data.glue_eval_data_collator(eval_dataset, eval_batch_size), leave=False, total=math.ceil(len(eval_dataset) / eval_batch_size))  # type: ignore
                     eval_loader_pbar.set_description(f"Evaluating ")
                     for batch in eval_loader_pbar:
                         labels = batch.pop("labels")  # type: ignore
