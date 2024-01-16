@@ -10,12 +10,11 @@ import jax
 import numpy as np
 import transformers
 from flax.metrics.tensorboard import SummaryWriter
+from tqdm.auto import tqdm
 
 import configs
 import data
 import train
-
-# from tqdm.auto import tqdm
 
 
 def write_train_metric(summary_writer, train_metrics, step):
@@ -209,7 +208,7 @@ def finetune(
             input_rng, train_dataset, train_batch_size  # type: ignore
         )
         train_batch = next(train_loader)
-        for epoch in epochs:
+        for epoch in tqdm(epochs):
             train_metrics = []
 
             if not use_lora:
