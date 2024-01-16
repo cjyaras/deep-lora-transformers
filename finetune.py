@@ -175,6 +175,7 @@ def finetune(
     lora_state = None
     if use_lora:
         lora_state = train.create_lora_train_state(
+            model_args,
             model.params,
             depth=int(train_args.finetune_strategy[-1]),
             learning_rate_fn=learning_rate_fn,

@@ -7,6 +7,8 @@ from data import task_to_keys
 @dataclass
 class ModelArguments:
     pretrain_model: str = "bert-base-cased"  # = "roberta-base"
+    lora_init_scale: float = 1e-2
+    lora_rank: int = 768
 
 
 @dataclass

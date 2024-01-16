@@ -10,6 +10,7 @@ import jax.random as jr
 import optax
 import transformers
 
+import configs
 from models import LoRA
 
 Array = jax.Array
@@ -129,6 +130,7 @@ class LoraTrainState(train_state.TrainState):
 
 
 def create_lora_train_state(
+    model_args: configs.ModelArguments,
     model_params: flax.core.FrozenDict[str, Array],
     depth: int,
     learning_rate_fn: optax.Schedule,
@@ -143,6 +145,8 @@ def create_lora_train_state(
             if k[-2:] == ("query", "kernel") or k[-2:] == ("value", "kernel")
         ],
         depth=depth,
+        init_scale=model_args.lora_init_scale,
+        inner_dims=model_args.lora_rank,
     )
     lora_variables = lora_model.init(jr.PRNGKey(seed), model_params)
     lora_params = lora_variables["params"]
