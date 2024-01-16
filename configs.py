@@ -14,7 +14,7 @@ class ModelArguments:
 class DataArguments:
     finetune_task: str = "stsb"
     max_seq_length: int = 32
-    max_train_samples: Optional[int] = 4
+    max_train_samples: Optional[int] = 8
 
     def __post_init__(self):
         assert self.finetune_task in task_to_keys.keys()

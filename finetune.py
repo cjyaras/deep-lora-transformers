@@ -10,11 +10,12 @@ import jax
 import numpy as np
 import transformers
 from flax.metrics.tensorboard import SummaryWriter
-from tqdm.auto import tqdm
 
 import configs
 import data
 import train
+
+# from tqdm.auto import tqdm
 
 
 def write_train_metric(summary_writer, train_metrics, step):
@@ -191,11 +192,12 @@ def finetune(
 
     steps_per_epoch = len(train_dataset) // train_batch_size
     total_steps = steps_per_epoch * train_args.num_train_epochs
-    epochs = tqdm(
-        range(train_args.num_train_epochs),
-        desc=f"Epoch ... (0/{train_args.num_train_epochs})",
-        position=0,
-    )
+    # epochs = tqdm(
+    #     range(train_args.num_train_epochs),
+    #     desc=f"Epoch ... (0/{train_args.num_train_epochs})",
+    #     position=0,
+    # )
+    epochs = range(train_args.num_train_epochs)
 
     rng = jax.random.PRNGKey(train_args.seed)
     dropout_rngs = jax.random.split(rng, jax.local_device_count())
@@ -226,22 +228,23 @@ def finetune(
                 train_metric = flax.jax_utils.unreplicate(train_metric)
                 write_train_metric(summary_writer, train_metrics, cur_step)
 
-                epochs.write(
-                    f"Step... ({cur_step}/{total_steps} | Training Loss: {train_metric['loss']}, Learning Rate:"
-                    f" {train_metric['learning_rate']})"
-                )
+                # epochs.write(
+                #     f"Step... ({cur_step}/{total_steps} | Training Loss: {train_metric['loss']}, Learning Rate:"
+                #     f" {train_metric['learning_rate']})"
+                # )
 
                 train_metrics = []
 
             if cur_step % train_args.eval_steps == 0 or cur_step % total_steps == 0:
                 # evaluate
                 eval_loader = data.glue_eval_data_collator(eval_dataset, eval_batch_size)  # type: ignore
-                for eval_batch in tqdm(
-                    eval_loader,
-                    total=math.ceil(len(eval_dataset) / eval_batch_size),
-                    desc="Evaluating ...",
-                    position=2,
-                ):
+                # for eval_batch in tqdm(
+                #     eval_loader,
+                #     total=math.ceil(len(eval_dataset) / eval_batch_size),
+                #     desc="Evaluating ...",
+                #     position=2,
+                # ):
+                for eval_batch in eval_loader:
                     labels = eval_batch.pop("labels")
                     if not use_lora:
                         predictions = flax.jax_utils.pad_shard_unpad(p_eval_step)(
@@ -270,7 +273,7 @@ def finetune(
 
                 write_eval_metric(summary_writer, eval_metric, cur_step)
 
-            epochs.desc = f"Epoch ... {epoch + 1}/{train_args.num_train_epochs}"
+            # epochs.desc = f"Epoch ... {epoch + 1}/{train_args.num_train_epochs}"
     else:
         print(
             f"SGD since {len(train_dataset)} = len(dataset) != batch_size = {train_batch_size}"
@@ -281,14 +284,15 @@ def finetune(
             train_loader = data.glue_train_data_collator(
                 input_rng, train_dataset, train_batch_size  # type: ignore
             )
-            for step, train_batch in enumerate(
-                tqdm(
-                    train_loader,
-                    total=steps_per_epoch,
-                    desc="Training...",
-                    position=1,
-                ),
-            ):
+            # for step, train_batch in enumerate(
+            #     tqdm(
+            #         train_loader,
+            #         total=steps_per_epoch,
+            #         desc="Training...",
+            #         position=1,
+            #     ),
+            # ):
+            for step, train_batch in enumerate(train_loader):
                 if not use_lora:
                     model_state, train_metric, dropout_rngs = p_train_step(
                         model_state, train_batch, dropout_rngs
@@ -306,22 +310,23 @@ def finetune(
                     train_metric = flax.jax_utils.unreplicate(train_metric)
                     write_train_metric(summary_writer, train_metrics, cur_step)
 
-                    epochs.write(
-                        f"Step... ({cur_step}/{total_steps} | Training Loss: {train_metric['loss']}, Learning Rate:"
-                        f" {train_metric['learning_rate']})"
-                    )
+                    # epochs.write(
+                    #     f"Step... ({cur_step}/{total_steps} | Training Loss: {train_metric['loss']}, Learning Rate:"
+                    #     f" {train_metric['learning_rate']})"
+                    # )
 
                     train_metrics = []
 
                 if cur_step % train_args.eval_steps == 0 or cur_step % total_steps == 0:
                     # evaluate
                     eval_loader = data.glue_eval_data_collator(eval_dataset, eval_batch_size)  # type: ignore
-                    for batch in tqdm(
-                        eval_loader,
-                        total=math.ceil(len(eval_dataset) / eval_batch_size),
-                        desc="Evaluating ...",
-                        position=2,
-                    ):
+                    # for batch in tqdm(
+                    #     eval_loader,
+                    #     total=math.ceil(len(eval_dataset) / eval_batch_size),
+                    #     desc="Evaluating ...",
+                    #     position=2,
+                    # ):
+                    for batch in eval_loader:
                         labels = batch.pop("labels")
                         if not use_lora:
                             predictions = flax.jax_utils.pad_shard_unpad(p_eval_step)(
