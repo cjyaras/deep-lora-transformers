@@ -20,6 +20,9 @@ class MatrixFactorization(nn.Module):
             else self.outer_dims
         )
         inner_dims = self.inner_dims if self.inner_dims else min(outer_dims)
+        assert inner_dims <= min(
+            outer_dims
+        ), f"inner_dims {inner_dims} must be smaller than outer_dims {outer_dims}"
         layers = []
         if self.depth == 1:
             layers.append(

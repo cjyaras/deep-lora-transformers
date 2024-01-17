@@ -7,7 +7,6 @@ import flax.training.common_utils as flax_cu
 import flax.training.train_state as train_state
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 import optax
 import transformers
 
@@ -239,7 +238,7 @@ def create_lora_train_state(
     )
     lora_variables = lora_model.init(lora_rng, model_params)
     lora_params = lora_variables["params"]
-    print("LoRA params: ", lora_params.keys())
+    print("LoRA params: ", list(lora_params.keys()))
     tx = optax.adamw(
         learning_rate=learning_rate_fn,
         b1=0.9,
