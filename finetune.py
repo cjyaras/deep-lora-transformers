@@ -89,7 +89,9 @@ def finetune(task_config: configs.TaskConfig):
     steps_per_epoch = len(train_dataset) // train_batch_size
     total_steps = steps_per_epoch * task_config.num_train_epochs
 
-    *dropout_rngs, rng = jax.random.split(rng, jax.local_device_count() + 1)
+    all_rngs = jax.random.split(rng, jax.local_device_count() + 1)
+    dropout_rngs = all_rngs[:-1]
+    rng = all_rngs[-1]
 
     if len(train_dataset) == train_batch_size:
         print(f"Full batch GD since len(dataset) = batch_size = {train_batch_size}")
