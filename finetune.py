@@ -226,7 +226,7 @@ def finetune(task_config: configs.TaskConfig):
 
                     utils.write_eval_metric(summary_writer, eval_metric, cur_step)
 
-    return model_state, lora_state
+    return fju.unreplicate(model_state), fju.unreplicate(lora_state)
 
 
 def main():
