@@ -2,6 +2,8 @@ from typing import Optional, Tuple
 
 import flax
 import flax.linen as nn
+import jax
+import jax.numpy as jnp
 import transformers
 
 import configs
@@ -117,3 +119,24 @@ def create_pretrain_model_from_config(task_config: configs.TaskConfig, num_label
         "bert-base-cased", config=config
     )
     return model
+
+
+def create_lora_model_from_config(
+    task_config: configs.TaskConfig, model_params: flax.core.FrozenDict[str, jax.Array]
+):
+    flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
+    flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
+    filtered_flat_model_params_shape_dict = {
+        k: v
+        for k, v in flat_model_params_shape_dict.items()
+        if task_config.finetune_filter(k, v)
+    }
+
+    lora_model = LoRA(
+        flat_params_shape_dict=filtered_flat_model_params_shape_dict,  # type: ignore
+        depth=task_config.lora_depth,
+        init_scale=task_config.lora_init_scale,
+        inner_dims=task_config.lora_rank,
+    )
+
+    return lora_model
