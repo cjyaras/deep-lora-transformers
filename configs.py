@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 # model_type = "bert-base-cased"
-model_type = "roberta-base"
+# model_type = "roberta-base"
+# model_type = "distilbert-base-uncased"
 
 # Glue tasks
 task_to_keys = {
@@ -29,6 +30,7 @@ class TaskConfig:
     num_train_samples: Optional[int] = None
 
     # Finetune type hparams
+    pretrain_model: str = "bert-base-cased"
     finetune_strategy: str = "full"  # "full" or "lora"
     finetune_filter: Callable = lambda _, v: len(v) == 2 and min(v) >= 768
     lora_depth: int = 2
