@@ -64,8 +64,6 @@ def finetune(task_config: configs.TaskConfig):
     rng = jax.random.PRNGKey(task_config.train_seed)
     if use_lora:
         lora_rng, rng = jax.random.split(rng)
-        # filter_fn = lambda _, v: len(v) == 2 and min(v) > 100
-        filter_fn = lambda k, _: "query/kernel" in k or "key/kernel" in k
         lora_state = train.create_lora_train_state(
             task_config,
             pretrain_model.params,
