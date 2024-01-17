@@ -217,11 +217,8 @@ class LoraTrainState(train_state.TrainState):
     pass
 
 
-def create_lora_train_state(
-    task_config: configs.TaskConfig,
-    model_params: flax.core.FrozenDict[str, Array],
-    learning_rate_fn: optax.Schedule,
-    lora_rng: jax.Array,
+def create_lora_model_from_config(
+    task_config: configs.TaskConfig, model_params: flax.core.FrozenDict[str, Array]
 ):
     flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
     flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
@@ -237,6 +234,17 @@ def create_lora_train_state(
         init_scale=task_config.lora_init_scale,
         inner_dims=task_config.lora_rank,
     )
+
+    return lora_model
+
+
+def create_lora_train_state(
+    task_config: configs.TaskConfig,
+    model_params: flax.core.FrozenDict[str, Array],
+    learning_rate_fn: optax.Schedule,
+    lora_rng: jax.Array,
+):
+    lora_model = create_lora_model_from_config(task_config, model_params)
     lora_variables = lora_model.init(lora_rng, model_params)
     lora_params = lora_variables["params"]
     print("LoRA params: ", list(lora_params.keys()))
