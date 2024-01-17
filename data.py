@@ -3,10 +3,13 @@ from typing import Optional
 
 import datasets
 import flax.training.common_utils as flax_cu
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import transformers
+
+import configs
 
 # Glue tasks
 task_to_keys = {
@@ -22,16 +25,29 @@ task_to_keys = {
 }
 
 
+def load_dataset_from_config(task_config: configs.TaskConfig, sample_rng: jax.Array):
+    tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
+    train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
+        task_config.finetune_task_name,
+        tokenizer,
+        task_config.max_seq_length,
+        task_config.num_train_samples,
+        sample_rng,
+        exclude_long_seq=True,
+    )
+    return train_dataset, eval_dataset, num_labels, is_regression
+
+
 def load_dataset(
-    finetune_task: str,
+    finetune_task_name: str,
     tokenizer: transformers.PreTrainedTokenizer | transformers.PreTrainedTokenizerFast,
     max_seq_length: int,
-    max_train_samples: Optional[int] = None,
-    train_sample_seed: int = 0,
-    exclude_long_seq: bool = False,
+    num_train_samples: Optional[int],
+    sample_rng: jax.Array,
+    exclude_long_seq: bool,
 ):
-    raw_datasets = datasets.load_dataset("glue", finetune_task)
-    is_regression = finetune_task == "stsb"
+    raw_datasets = datasets.load_dataset("glue", finetune_task_name)
+    is_regression = finetune_task_name == "stsb"
 
     if not is_regression:
         label_list = raw_datasets["train"].features["label"].names  # type: ignore
@@ -48,19 +64,19 @@ def load_dataset(
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
-    sentence1_key, sentence2_key = task_to_keys[finetune_task]
+    sentence1_key, sentence2_key = task_to_keys[finetune_task_name]
 
     if exclude_long_seq:
         raw_datasets["train"] = raw_datasets["train"].filter(  # type: ignore
             lambda example: length_of(example) <= max_seq_length
         )
 
-    if max_train_samples is not None:
+    if num_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore
             jr.choice(
-                jr.PRNGKey(train_sample_seed),
+                sample_rng,
                 jnp.arange(len(raw_datasets["train"])),  # type: ignore
-                shape=(max_train_samples,),
+                shape=(num_train_samples,),
             )
         )
 
@@ -82,7 +98,7 @@ def load_dataset(
 
     train_dataset = processed_datasets["train"]  # type: ignore
     eval_dataset = processed_datasets[  # type: ignore
-        "validation_matched" if finetune_task == "mnli" else "validation"
+        "validation_matched" if finetune_task_name == "mnli" else "validation"
     ]
     return train_dataset, eval_dataset, num_labels, is_regression
 

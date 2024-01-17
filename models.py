@@ -2,6 +2,9 @@ from typing import Optional
 
 import flax
 import flax.linen as nn
+import transformers
+
+import configs
 
 
 class MatrixFactorization(nn.Module):
@@ -73,3 +76,18 @@ class LoRA(nn.Module):
             lambda k, v: v + updates[k] if k in self.dmfs.keys() else v,
             model_params,
         )
+
+
+def create_pretrain_model_from_configs(
+    task_config: configs.TaskConfig, num_labels: int
+):
+    # Model
+    config = transformers.AutoConfig.from_pretrained(
+        "bert-base-cased",
+        num_labels=num_labels,
+        finetuning_task=task_config.finetune_task_name,
+    )
+    model = transformers.FlaxAutoModelForSequenceClassification.from_pretrained(
+        "bert-base-cased", config=config
+    )
+    return model

@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Callable
 
 import flax
@@ -39,6 +40,94 @@ def create_learning_rate_fn(
         schedules=[warmup_fn, decay_fn], boundaries=[num_warmup_steps]
     )
     return schedule_fn
+
+
+def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool):
+    if not use_lora:
+
+        @partial(jax.pmap, axis_name="batch", donate_argnums=(0,))
+        def p_train_step(
+            model_state: ModelTrainState,
+            batch: dict[str, jax.Array],
+            dropout_rng: jax.Array,
+        ):
+            dropout_rng, new_dropout_rng = jax.random.split(dropout_rng)
+            targets = batch.pop("labels")
+
+            def loss_fn(params):
+                logits = model_state.apply_fn(
+                    **batch, params=params, dropout_rng=dropout_rng, train=True
+                )[0]
+                loss = model_state.loss_fn(logits, targets)
+                return loss
+
+            grad_fn = jax.value_and_grad(loss_fn)
+            loss, grad = grad_fn(model_state.params)
+            grad = jax.lax.pmean(grad, "batch")
+            new_model_state = model_state.apply_gradients(grads=grad)
+            metrics = jax.lax.pmean(
+                {"loss": loss, "learning_rate": learning_rate_fn(model_state.step)},
+                axis_name="batch",
+            )
+            return new_model_state, metrics, new_dropout_rng
+
+        @partial(jax.pmap, axis_name="batch")
+        def p_eval_step(model_state: ModelTrainState, batch: dict[str, jax.Array]):
+            logits = model_state.apply_fn(
+                **batch, params=model_state.params, train=False
+            )[0]
+            return model_state.logits_fn(logits)
+
+    else:
+
+        @partial(jax.pmap, axis_name="batch", donate_argnums=(1,))
+        def p_train_step(
+            model_state: ModelTrainState,
+            lora_state: LoraTrainState,
+            batch: dict[str, jax.Array],
+            dropout_rng: jax.Array,
+        ):
+            dropout_rng, new_dropout_rng = jax.random.split(dropout_rng)
+            targets = batch.pop("labels")
+
+            def loss_fn(lora_params):
+                adapted_model_params = lora_state.apply_fn(
+                    {"params": lora_params}, model_state.params
+                )
+                logits = model_state.apply_fn(
+                    **batch,
+                    params=adapted_model_params,
+                    dropout_rng=dropout_rng,
+                    train=True,
+                )[0]
+                loss = model_state.loss_fn(logits, targets)
+                return loss
+
+            grad_fn = jax.value_and_grad(loss_fn)
+            loss, grad = grad_fn(lora_state.params)
+            grad = jax.lax.pmean(grad, "batch")
+            new_lora_state = lora_state.apply_gradients(grads=grad)
+            metrics = jax.lax.pmean(
+                {"loss": loss, "learning_rate": learning_rate_fn(lora_state.step)},
+                axis_name="batch",
+            )
+            return new_lora_state, metrics, new_dropout_rng
+
+        @partial(jax.pmap, axis_name="batch")
+        def p_eval_step(
+            model_state: ModelTrainState,
+            lora_state: LoraTrainState,
+            batch: dict[str, jax.Array],
+        ):
+            adapted_model_params = lora_state.apply_fn(
+                {"params": lora_state.params}, model_state.params
+            )
+            logits = model_state.apply_fn(
+                **batch, params=adapted_model_params, train=False
+            )[0]
+            return model_state.logits_fn(logits)
+
+    return p_train_step, p_eval_step
 
 
 class ModelTrainState(train_state.TrainState):
@@ -130,11 +219,9 @@ class LoraTrainState(train_state.TrainState):
 
 
 def create_lora_train_state(
-    model_args: configs.ModelArguments,
+    task_config: configs.TaskConfig,
     model_params: flax.core.FrozenDict[str, Array],
-    depth: int,
     learning_rate_fn: optax.Schedule,
-    weight_decay: float,
     seed: int = 0,
 ):
     flat_model_params = flax.traverse_util.flatten_dict(model_params)
@@ -144,9 +231,9 @@ def create_lora_train_state(
             for k in flat_model_params
             if k[-2:] == ("query", "kernel") or k[-2:] == ("value", "kernel")
         ],
-        depth=depth,
-        init_scale=model_args.lora_init_scale,
-        inner_dims=model_args.lora_rank,
+        depth=task_config.lora_depth,
+        init_scale=task_config.lora_init_scale,
+        inner_dims=task_config.lora_rank,
     )
     lora_variables = lora_model.init(jr.PRNGKey(seed), model_params)
     lora_params = lora_variables["params"]
@@ -155,7 +242,7 @@ def create_lora_train_state(
         b1=0.9,
         b2=0.999,
         eps=1e-6,
-        weight_decay=weight_decay,
+        weight_decay=task_config.weight_decay,
     )
     return LoraTrainState.create(
         apply_fn=lora_model.apply,
