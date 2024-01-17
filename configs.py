@@ -17,7 +17,8 @@ task_to_keys = {
 
 @dataclass
 class TaskConfig:
-    seed: int = 0
+    train_seed: int = 0
+    sample_seed: int = 0
 
     # Data hparams
     finetune_task_name: str = "stsb"

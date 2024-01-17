@@ -18,14 +18,12 @@ import utils
 
 
 def finetune(task_config: configs.TaskConfig):
-    rng = jax.random.PRNGKey(task_config.seed)
-    sample_rng, rng = jax.random.split(rng)
     (
         train_dataset,
         eval_dataset,
         num_labels,
         is_regression,
-    ) = data.load_dataset_from_config(task_config, sample_rng)
+    ) = data.load_dataset_from_config(task_config)
 
     # Model
     pretrain_model = models.create_pretrain_model_from_config(task_config, num_labels)
@@ -63,6 +61,7 @@ def finetune(task_config: configs.TaskConfig):
     )
     model_state = fju.replicate(model_state)
     lora_state = None
+    rng = jax.random.PRNGKey(task_config.train_seed)
     if use_lora:
         lora_rng, rng = jax.random.split(rng)
         # filter_fn = lambda _, v: len(v) == 2 and min(v) > 100

@@ -12,14 +12,14 @@ import transformers
 import configs
 
 
-def load_dataset_from_config(task_config: configs.TaskConfig, sample_rng: jax.Array):
+def load_dataset_from_config(task_config: configs.TaskConfig):
     tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
     train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
         task_config.finetune_task_name,
         tokenizer,
         task_config.max_seq_length,
         task_config.num_train_samples,
-        sample_rng,
+        jax.random.PRNGKey(task_config.sample_seed),
         exclude_long_seq=True,
     )
     return train_dataset, eval_dataset, num_labels, is_regression
