@@ -222,12 +222,13 @@ def create_lora_train_state(
     model_params: flax.core.FrozenDict[str, Array],
     learning_rate_fn: optax.Schedule,
     lora_rng: jax.Array,
-    filter_fn: Callable,
 ):
     flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
     flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
     filtered_flat_model_params_shape_dict = {
-        k: v for k, v in flat_model_params_shape_dict.items() if filter_fn(k, v)
+        k: v
+        for k, v in flat_model_params_shape_dict.items()
+        if task_config.finetune_filter(k, v)
     }
 
     lora_model = LoRA(

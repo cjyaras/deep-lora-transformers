@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 # Glue tasks
 task_to_keys = {
@@ -27,6 +27,7 @@ class TaskConfig:
 
     # Finetune type hparams
     finetune_strategy: str = "full"  # "full" or "lora"
+    finetune_filter: Callable = lambda _, v: len(v) == 2 and min(v) > 2
     lora_depth: int = 2
     lora_init_scale: float = 1e-2
     lora_rank: int = 768

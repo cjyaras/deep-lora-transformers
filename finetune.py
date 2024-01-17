@@ -71,7 +71,6 @@ def finetune(task_config: configs.TaskConfig):
             pretrain_model.params,
             learning_rate_fn=learning_rate_fn,
             lora_rng=lora_rng,
-            filter_fn=filter_fn,
         )
         lora_state = fju.replicate(lora_state)
 
