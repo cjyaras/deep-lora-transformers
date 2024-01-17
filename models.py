@@ -78,9 +78,7 @@ class LoRA(nn.Module):
         )
 
 
-def create_pretrain_model_from_configs(
-    task_config: configs.TaskConfig, num_labels: int
-):
+def create_pretrain_model_from_config(task_config: configs.TaskConfig, num_labels: int):
     # Model
     config = transformers.AutoConfig.from_pretrained(
         "bert-base-cased",
