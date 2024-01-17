@@ -28,7 +28,7 @@ def finetune(task_config: configs.TaskConfig):
     ) = data.load_dataset_from_config(task_config, sample_rng)
 
     # Model
-    pretrain_model = models.create_pretrain_model_from_configs(task_config, num_labels)
+    pretrain_model = models.create_pretrain_model_from_config(task_config, num_labels)
 
     train_batch_size = (
         jax.local_device_count() * task_config.per_device_train_batch_size
