@@ -111,12 +111,12 @@ class LoRA(nn.Module):
 def create_pretrain_model_from_config(task_config: configs.TaskConfig, num_labels: int):
     # Model
     config = transformers.AutoConfig.from_pretrained(
-        "bert-base-cased",
+        configs.model_type,
         num_labels=num_labels,
         finetuning_task=task_config.finetune_task_name,
     )
     model = transformers.FlaxAutoModelForSequenceClassification.from_pretrained(
-        "bert-base-cased", config=config
+        configs.model_type, config=config
     )
     return model
 

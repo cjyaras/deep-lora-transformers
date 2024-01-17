@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+# model_type = "bert-base-cased"
+model_type = "roberta-base"
+
 # Glue tasks
 task_to_keys = {
     "cola": ("sentence", None),

@@ -13,7 +13,7 @@ import configs
 
 
 def load_dataset_from_config(task_config: configs.TaskConfig):
-    tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
+    tokenizer = transformers.AutoTokenizer.from_pretrained(configs.model_type)
     train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
         task_config.finetune_task_name,
         tokenizer,
