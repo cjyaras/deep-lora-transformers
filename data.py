@@ -11,19 +11,6 @@ import transformers
 
 import configs
 
-# Glue tasks
-task_to_keys = {
-    "cola": ("sentence", None),
-    "mnli": ("premise", "hypothesis"),
-    "mrpc": ("sentence1", "sentence2"),
-    "qnli": ("question", "sentence"),
-    "qqp": ("question1", "question2"),
-    "rte": ("sentence1", "sentence2"),
-    "sst2": ("sentence", None),
-    "stsb": ("sentence1", "sentence2"),
-    "wnli": ("sentence1", "sentence2"),
-}
-
 
 def load_dataset_from_config(task_config: configs.TaskConfig, sample_rng: jax.Array):
     tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
@@ -64,7 +51,7 @@ def load_dataset(
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
-    sentence1_key, sentence2_key = task_to_keys[finetune_task_name]
+    sentence1_key, sentence2_key = configs.task_to_keys[finetune_task_name]
 
     if exclude_long_seq:
         raw_datasets["train"] = raw_datasets["train"].filter(  # type: ignore
