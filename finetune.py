@@ -64,10 +64,15 @@ def finetune(task_config: configs.TaskConfig):
     model_state = fju.replicate(model_state)
     lora_state = None
     if use_lora:
+        lora_rng, rng = jax.random.split(rng)
+        # filter_fn = lambda _, v: len(v) == 2 and min(v) > 100
+        filter_fn = lambda k, _: "query/kernel" in k or "key/kernel" in k
         lora_state = train.create_lora_train_state(
             task_config,
             pretrain_model.params,
             learning_rate_fn=learning_rate_fn,
+            lora_rng=lora_rng,
+            filter_fn=filter_fn,
         )
         lora_state = fju.replicate(lora_state)
 
@@ -78,12 +83,12 @@ def finetune(task_config: configs.TaskConfig):
     ), "Tensorboard is required for logging but is not installed."
 
     experiment_name = (
-        f"{task_config.finetune_task_name}-{task_config.finetune_strategy}"
+        f"{task_config.finetune_task_name}_{task_config.finetune_strategy}"
     )
     if use_lora:
-        experiment_name += f"-{task_config.lora_depth}depth-{task_config.lora_rank}rank"
+        experiment_name += f"_{task_config.lora_depth}-{task_config.lora_rank}"
     if task_config.num_train_samples is not None:
-        experiment_name += f"-{len(train_dataset)}samples"
+        experiment_name += f"_samples={len(train_dataset)}"
     summary_writer = SummaryWriter(experiment_name)
 
     steps_per_epoch = len(train_dataset) // train_batch_size
@@ -162,10 +167,14 @@ def finetune(task_config: configs.TaskConfig):
         for epoch in epochs_pbar:
             train_metrics = []
             rng, input_rng = jax.random.split(rng)
-            train_loader = data.glue_train_data_collator(
-                input_rng, train_dataset, train_batch_size  # type: ignore
+            train_loader_pbar = tqdm(
+                data.glue_train_data_collator(
+                    input_rng, train_dataset, train_batch_size  # type: ignore
+                ),
+                leave=False,
+                total=math.ceil(len(train_dataset) / train_batch_size),
             )
-            for step, train_batch in enumerate(train_loader):
+            for step, train_batch in enumerate(train_loader_pbar):
                 if not use_lora:
                     model_state, train_metric, dropout_rngs = p_train_step(
                         model_state, train_batch, dropout_rngs
@@ -226,6 +235,9 @@ def finetune(task_config: configs.TaskConfig):
 
 def main():
     task_config = configs.TaskConfig()
+    task_config.finetune_strategy = "lora"
+    task_config.lora_rank = 4
+    print(task_config)
     finetune(task_config)
 
 

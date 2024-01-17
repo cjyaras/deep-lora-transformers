@@ -22,7 +22,7 @@ class TaskConfig:
     # Data hparams
     finetune_task_name: str = "stsb"
     max_seq_length: int = 32
-    num_train_samples: Optional[int] = 4
+    num_train_samples: Optional[int] = None
 
     # Finetune type hparams
     finetune_strategy: str = "full"  # "full" or "lora"
