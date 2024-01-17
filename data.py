@@ -54,9 +54,8 @@ def load_dataset(
     sentence1_key, sentence2_key = configs.task_to_keys[finetune_task_name]
 
     if exclude_long_seq:
-        raw_datasets["train"] = raw_datasets["train"].filter(  # type: ignore
-            lambda example: length_of(example) <= max_seq_length
-        )
+        for k, v in raw_datasets.items():  # type: ignore
+            raw_datasets[k] = v.filter(lambda example: length_of(example) <= max_seq_length)  # type: ignore
 
     if num_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore
