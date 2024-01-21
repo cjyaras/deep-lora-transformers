@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable
+from typing import Callable, Tuple
 
 import flax
 import flax.struct
@@ -13,20 +13,14 @@ import transformers
 import configs
 import models
 
-Array = jax.Array
-
 
 def create_learning_rate_fn(
-    train_ds_size: int,
-    train_batch_size: int,
-    num_train_epochs: int,
+    num_train_steps: int,
     num_warmup_steps: int,
     learning_rate: float,
     decay_ratio: float,
 ) -> optax.Schedule:
-    """Returns a linear warmup, linear_decay learning rate function."""
-    steps_per_epoch = train_ds_size // train_batch_size
-    num_train_steps = steps_per_epoch * num_train_epochs
+    """Returns a linear warmup, linear decay learning rate function."""
     warmup_fn = optax.linear_schedule(
         init_value=0.0, end_value=learning_rate, transition_steps=num_warmup_steps
     )
@@ -41,11 +35,13 @@ def create_learning_rate_fn(
     return schedule_fn
 
 
-def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool):
+def create_train_eval_step_fns(
+    learning_rate_fn: optax.Schedule, use_lora: bool
+) -> Tuple[Callable, Callable]:
     if not use_lora:
 
-        @partial(jax.pmap, axis_name="batch", donate_argnums=(0,))
-        def p_train_step(
+        @partial(jax.jit, donate_argnums=(0,))
+        def train_step(
             model_state: ModelTrainState,
             batch: dict[str, jax.Array],
             dropout_rng: jax.Array,
@@ -61,17 +57,16 @@ def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool)
                 return loss
 
             grad_fn = jax.value_and_grad(loss_fn)
-            loss, grad = grad_fn(model_state.params)
-            grad = jax.lax.pmean(grad, "batch")
-            new_model_state = model_state.apply_gradients(grads=grad)
-            metrics = jax.lax.pmean(
-                {"loss": loss, "learning_rate": learning_rate_fn(model_state.step)},
-                axis_name="batch",
-            )
+            loss, grads = grad_fn(model_state.params)
+            new_model_state = model_state.apply_gradients(grads=grads)
+            metrics = {
+                "loss": loss,
+                "learning_rate": learning_rate_fn(model_state.step),
+            }
             return new_model_state, metrics, new_dropout_rng
 
-        @partial(jax.pmap, axis_name="batch")
-        def p_eval_step(model_state: ModelTrainState, batch: dict[str, jax.Array]):
+        @jax.jit
+        def eval_step(model_state: ModelTrainState, batch: dict[str, jax.Array]):
             logits = model_state.apply_fn(
                 **batch, params=model_state.params, train=False
             )[0]
@@ -79,8 +74,8 @@ def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool)
 
     else:
 
-        @partial(jax.pmap, axis_name="batch", donate_argnums=(1,))
-        def p_train_step(
+        @partial(jax.jit, donate_argnums=(1,))
+        def train_step(
             model_state: ModelTrainState,
             lora_state: LoraTrainState,
             batch: dict[str, jax.Array],
@@ -103,17 +98,13 @@ def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool)
                 return loss
 
             grad_fn = jax.value_and_grad(loss_fn)
-            loss, grad = grad_fn(lora_state.params)
-            grad = jax.lax.pmean(grad, "batch")
-            new_lora_state = lora_state.apply_gradients(grads=grad)
-            metrics = jax.lax.pmean(
-                {"loss": loss, "learning_rate": learning_rate_fn(lora_state.step)},
-                axis_name="batch",
-            )
+            loss, grads = grad_fn(lora_state.params)
+            new_lora_state = lora_state.apply_gradients(grads=grads)
+            metrics = {"loss": loss, "learning_rate": learning_rate_fn(lora_state.step)}
             return new_lora_state, metrics, new_dropout_rng
 
-        @partial(jax.pmap, axis_name="batch")
-        def p_eval_step(
+        @jax.jit
+        def eval_step(
             model_state: ModelTrainState,
             lora_state: LoraTrainState,
             batch: dict[str, jax.Array],
@@ -126,7 +117,7 @@ def create_train_eval_step_fns(learning_rate_fn: optax.Schedule, use_lora: bool)
             )[0]
             return model_state.logits_fn(logits)
 
-    return p_train_step, p_eval_step
+    return train_step, eval_step
 
 
 class ModelTrainState(train_state.TrainState):
@@ -148,7 +139,6 @@ def create_model_train_state(
     model: transformers.FlaxAutoModelForSequenceClassification,
     learning_rate_fn: optax.Schedule,
     is_regression: bool,
-    num_labels: int,
     weight_decay: float,
     frozen: bool,
 ) -> train_state.TrainState:
@@ -199,9 +189,7 @@ def create_model_train_state(
     else:  # Classification.
 
         def cross_entropy_loss(logits, labels):
-            xentropy = optax.softmax_cross_entropy(
-                logits, flax_cu.onehot(labels, num_classes=num_labels)
-            )
+            xentropy = optax.softmax_cross_entropy_with_integer_labels(logits, labels)
             return jnp.mean(xentropy)
 
         return ModelTrainState.create(
@@ -219,14 +207,13 @@ class LoraTrainState(train_state.TrainState):
 
 def create_lora_train_state(
     task_config: configs.TaskConfig,
-    model_params: flax.core.FrozenDict[str, Array],
+    model_params: flax.core.FrozenDict[str, jax.Array],
     learning_rate_fn: optax.Schedule,
     lora_rng: jax.Array,
-):
+) -> LoraTrainState:
     lora_model = models.create_lora_model_from_config(task_config, model_params)
-    lora_variables = lora_model.init(lora_rng, model_params)
+    lora_variables = lora_model.init(lora_rng)
     lora_params = lora_variables["params"]
-    print("LoRA params: ", list(lora_params.keys()))
     tx = optax.adamw(
         learning_rate=learning_rate_fn,
         b1=0.9,
@@ -235,18 +222,17 @@ def create_lora_train_state(
         weight_decay=task_config.weight_decay,
     )
     return LoraTrainState.create(
-        apply_fn=lora_model.apply,
+        apply_fn=partial(lora_model.apply, method=lora_model.adapt),
         params=lora_params,
         tx=tx,
     )
 
 
 def write_train_metric(summary_writer, train_metrics, step):
-    train_metrics = flax_cu.get_metrics(train_metrics)
-    for key, vals in train_metrics.items():
-        tag = f"train_{key}"
-        for i, val in enumerate(vals):
-            summary_writer.scalar(tag, val, step - len(vals) + i + 1)
+    for i, metric in enumerate(train_metrics):
+        for key, val in metric.items():
+            tag = f"train_{key}"
+            summary_writer.scalar(tag, val, step - len(train_metrics) + i + 1)
 
 
 def write_eval_metric(summary_writer, eval_metrics, step):

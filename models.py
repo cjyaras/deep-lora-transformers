@@ -11,8 +11,8 @@ import configs
 
 class MatrixFactorization(nn.Module):
     outer_dims: int | Tuple[int, int]
-    init_scale: float = 1e-2
-    depth: int = 2
+    init_scale: float = 1e-3
+    depth: int = 3
     inner_dims: Optional[int] = None
 
     def setup(self):
@@ -73,8 +73,8 @@ class MatrixFactorization(nn.Module):
 
 class LoRA(nn.Module):
     flat_params_shape_dict: dict
-    init_scale: float = 1e-2
-    depth: int = 2
+    init_scale: float = 1e-3
+    depth: int = 3
     inner_dims: Optional[int] = None
 
     def setup(self):
@@ -89,11 +89,11 @@ class LoRA(nn.Module):
             )
         self.dmfs = dmfs
 
-    def compute_updates(self):
+    def __call__(self):
         return {k: v() for k, v in self.dmfs.items()}
 
-    def __call__(self, model_params):
-        updates = self.compute_updates()
+    def adapt(self, model_params):
+        updates = self()
 
         def f(k, v):
             flat_k = "/".join(k)
@@ -108,7 +108,9 @@ class LoRA(nn.Module):
         )
 
 
-def create_pretrain_model_from_config(task_config: configs.TaskConfig, num_labels: int):
+def create_pretrain_model_from_config(
+    task_config: configs.TaskConfig, num_labels: int
+) -> transformers.FlaxAutoModelForSequenceClassification:
     # Model
     config = transformers.AutoConfig.from_pretrained(
         task_config.pretrain_model,
@@ -123,13 +125,13 @@ def create_pretrain_model_from_config(task_config: configs.TaskConfig, num_label
 
 def create_lora_model_from_config(
     task_config: configs.TaskConfig, model_params: flax.core.FrozenDict[str, jax.Array]
-):
+) -> LoRA:
     flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
     flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
     filtered_flat_model_params_shape_dict = {
         k: v
         for k, v in flat_model_params_shape_dict.items()
-        if task_config.finetune_filter(k, v)
+        if task_config.lora_adapt_filter(k, v)
     }
 
     lora_model = LoRA(

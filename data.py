@@ -1,8 +1,7 @@
 import math
-from typing import Optional
+from typing import Any, Iterator, Optional, Tuple, cast
 
 import datasets
-import flax.training.common_utils as flax_cu
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -11,28 +10,30 @@ import transformers
 
 import configs
 
+Dataset = datasets.arrow_dataset.Dataset
 
-def load_dataset_from_config(task_config: configs.TaskConfig):
+
+def load_dataset_from_config(
+    task_config: configs.TaskConfig,
+) -> Tuple[Dataset, Dataset, int, bool]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
     train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
         task_config.finetune_task_name,
         tokenizer,
         task_config.max_seq_length,
         task_config.num_train_samples,
-        jax.random.PRNGKey(task_config.sample_seed),
-        exclude_long_seq=True,
+        task_config.sample_seed,
     )
     return train_dataset, eval_dataset, num_labels, is_regression
 
 
 def load_dataset(
     finetune_task_name: str,
-    tokenizer: transformers.PreTrainedTokenizer | transformers.PreTrainedTokenizerFast,
-    max_seq_length: int,
+    tokenizer: transformers.PreTrainedTokenizerBase,
+    max_seq_length: Optional[int],
     num_train_samples: Optional[int],
-    sample_rng: jax.Array,
-    exclude_long_seq: bool,
-):
+    sample_seed: int,
+) -> Tuple[Dataset, Dataset, int, bool]:
     raw_datasets = datasets.load_dataset("glue", finetune_task_name)
     is_regression = finetune_task_name == "stsb"
 
@@ -42,25 +43,25 @@ def load_dataset(
     else:
         num_labels = 1
 
-    def length_of(examples):
+    def length_of(example):
         texts = (
-            (examples[sentence1_key],)
+            (example[sentence1_key],)
             if sentence2_key is None
-            else (examples[sentence1_key], examples[sentence2_key])
+            else (example[sentence1_key], example[sentence2_key])
         )
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
     sentence1_key, sentence2_key = configs.task_to_keys[finetune_task_name]
 
-    if exclude_long_seq:
+    if max_seq_length is not None:
         for k, v in raw_datasets.items():  # type: ignore
             raw_datasets[k] = v.filter(lambda example: length_of(example) <= max_seq_length)  # type: ignore
 
     if num_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore
             jr.choice(
-                sample_rng,
+                jax.random.PRNGKey(sample_seed),
                 jnp.arange(len(raw_datasets["train"])),  # type: ignore
                 shape=(num_train_samples,),
             )
@@ -86,28 +87,39 @@ def load_dataset(
     eval_dataset = processed_datasets[  # type: ignore
         "validation_matched" if finetune_task_name == "mnli" else "validation"
     ]
+    train_dataset = cast(Dataset, train_dataset)
+    eval_dataset = cast(Dataset, eval_dataset)
     return train_dataset, eval_dataset, num_labels, is_regression
 
 
-def glue_train_data_collator(
-    rng: jr.PRNGKeyArray, dataset: datasets.arrow_dataset.Dataset, batch_size: int
-):
-    """Returns shuffled batches of size `batch_size` from truncated `train dataset`, sharded over all local devices."""
-    steps_per_epoch = len(dataset) // batch_size
-    perms = jr.permutation(rng, len(dataset))
-    perms = perms[: steps_per_epoch * batch_size]  # Skip incomplete batch.
-    perms = perms.reshape((steps_per_epoch, batch_size))
-
-    for perm in perms:
-        batch = dataset[perm]
+def create_train_iterator(
+    rng: jax.Array, dataset: datasets.arrow_dataset.Dataset, batch_size: int
+) -> Iterator[dict[Any, np.ndarray]]:
+    if len(dataset) == batch_size:
+        # If dataset size is equal to batch size, then we can just return the dataset as a batch.
+        batch = dataset[:]
         batch = {k: np.array(v) for k, v in batch.items()}
-        batch = flax_cu.shard(batch)
 
-        yield batch
+        while True:
+            yield batch
+    else:
+        steps_per_epoch = len(dataset) // batch_size
+        while True:
+            perm_rng, rng = jr.split(rng)
+            perms = jr.permutation(perm_rng, len(dataset))
+            perms = perms[: steps_per_epoch * batch_size]  # Skip incomplete batch.
+            perms = perms.reshape((steps_per_epoch, batch_size))
+
+            for perm in perms:
+                batch = dataset[perm]
+                batch = {k: np.array(v) for k, v in batch.items()}
+
+                yield batch
 
 
-def glue_eval_data_collator(dataset: datasets.arrow_dataset.Dataset, batch_size: int):
-    """Returns batches of size `batch_size` from `eval dataset`. Sharding handled by `pad_shard_unpad` in the eval loop."""
+def create_eval_iterator(
+    dataset: datasets.arrow_dataset.Dataset, batch_size: int
+) -> Iterator[dict[Any, np.ndarray]]:
     batch_idx = np.arange(len(dataset))
 
     steps_per_epoch = math.ceil(len(dataset) / batch_size)
