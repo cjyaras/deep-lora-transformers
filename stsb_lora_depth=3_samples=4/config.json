@@ -1,0 +1,22 @@
+{
+    "train_seed": 0,
+    "sample_seed": 0,
+    "finetune_task_name": "stsb",
+    "max_seq_length": 32,
+    "num_train_samples": 4,
+    "pretrain_model": "bert-base-cased",
+    "lora_adapt_type": "only_query_value",
+    "lora_depth": 3,
+    "lora_init_scale": 0.001,
+    "lora_rank": null,
+    "lora_alpha": 1,
+    "num_train_steps": 100,
+    "train_batch_size": 4,
+    "eval_batch_size": 32,
+    "num_warmup_steps": 0,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0,
+    "decay_ratio": 0.1,
+    "log_eval_steps": 20,
+    "save_step_points": []
+}

@@ -1,4 +1,6 @@
 import math
+import os
+import shutil
 
 import evaluate
 import flax
@@ -12,6 +14,7 @@ import configs
 import data
 import models
 import train
+import utils
 
 
 def finetune(task_config: configs.TaskConfig):
@@ -32,29 +35,22 @@ def finetune(task_config: configs.TaskConfig):
         task_config.decay_ratio,
     )
 
-    train_step, eval_step = train.create_train_eval_step_fns(
-        learning_rate_fn, task_config.use_lora
-    )
+    train_step, eval_step = train.create_train_eval_step_fns(learning_rate_fn)
 
-    model_state = train.create_model_train_state(
+    model_state = train.create_model_state(
         model=pretrain_model,
-        learning_rate_fn=learning_rate_fn,
         is_regression=is_regression,
-        weight_decay=task_config.weight_decay,
-        frozen=task_config.use_lora,
     )
 
-    lora_state = None
     rng = jax.random.PRNGKey(task_config.train_seed)
 
-    if task_config.use_lora:
-        lora_rng, rng = jax.random.split(rng)
-        lora_state = train.create_lora_train_state(
-            task_config,
-            pretrain_model.params,  # type: ignore
-            learning_rate_fn=learning_rate_fn,
-            lora_rng=lora_rng,
-        )
+    lora_rng, rng = jax.random.split(rng)
+    lora_state = train.create_lora_train_state(
+        task_config,
+        pretrain_model.params,  # type: ignore
+        learning_rate_fn=learning_rate_fn,
+        lora_rng=lora_rng,
+    )
 
     eval_metric = evaluate.load("glue", task_config.finetune_task_name)
 
@@ -62,16 +58,18 @@ def finetune(task_config: configs.TaskConfig):
         transformers.is_tensorboard_available()
     ), "Tensorboard is required for logging but is not installed."
 
-    finetune_type = "lora" if task_config.use_lora else "full"
-    experiment_name = f"{task_config.finetune_task_name}_{finetune_type}"
-
-    if task_config.use_lora:
-        experiment_name += f"_depth={task_config.lora_depth}"
-        if task_config.lora_rank is not None:
-            experiment_name += f"_rank={task_config.lora_rank}"
+    experiment_name = f"{task_config.finetune_task_name}_lora"
+    experiment_name += f"_depth={task_config.lora_depth}"
+    if task_config.lora_rank is not None:
+        experiment_name += f"_rank={task_config.lora_rank}"
     if task_config.num_train_samples is not None:
         experiment_name += f"_samples={len(train_dataset)}"
+    if os.path.exists(experiment_name):
+        shutil.rmtree(experiment_name)
     summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_name)
+
+    with open(os.path.join(experiment_name, "config.json"), "w") as f:
+        f.write(task_config.to_json(indent=4))  # type: ignore
 
     dropout_rng, input_rng, rng = jax.random.split(rng, 3)
     train_iterator = data.create_train_iterator(
@@ -84,23 +82,23 @@ def finetune(task_config: configs.TaskConfig):
     train_metrics = []
 
     for step, train_batch in enumerate(tqdm_train_iterator, 1):
-        if not task_config.use_lora:
-            model_state, train_metric, dropout_rng = train_step(
-                model_state, train_batch, dropout_rng
-            )
-        else:
-            lora_state, train_metric, dropout_rng = train_step(
-                model_state, lora_state, train_batch, dropout_rng
-            )
+        # Iterator is infinite, need to break out
+        if step > task_config.num_train_steps:
+            break
+
+        lora_state, train_metric, dropout_rng = train_step(
+            model_state, lora_state, train_batch, dropout_rng
+        )
         train_metrics.append(train_metric)
 
-        if step % task_config.log_steps == 0 or step == task_config.num_train_steps:
+        if (
+            step % task_config.log_eval_steps == 0
+            or step == task_config.num_train_steps
+        ):
             # Save metrics
-            train.write_train_metric(summary_writer, train_metrics, step)
-
+            utils.write_train_metric(summary_writer, train_metrics, step)
             train_metrics = []
 
-        if step % task_config.eval_steps == 0 or step == task_config.num_train_steps:
             eval_iterator = data.create_eval_iterator(
                 eval_dataset, task_config.eval_batch_size
             )
@@ -117,27 +115,22 @@ def finetune(task_config: configs.TaskConfig):
                     ),  # type: ignore
                     eval_batch,
                 )
-                if not task_config.use_lora:
-                    padded_predictions = eval_step(model_state, padded_eval_batch)
-                else:
-                    padded_predictions = eval_step(
-                        model_state, lora_state, padded_eval_batch
-                    )
+                padded_predictions = eval_step(
+                    model_state, lora_state, padded_eval_batch
+                )
                 predictions = padded_predictions[: len(labels)]
                 eval_metric.add_batch(predictions=predictions, references=labels)
 
-            eval_value = eval_metric.compute()
+            eval_metric_value = eval_metric.compute()
+            utils.write_eval_metric(summary_writer, eval_metric_value, step)
             print(
-                f"Step ({step}/{task_config.num_train_steps}): Eval Metrics: {eval_value}"
+                f"Step ({step}/{task_config.num_train_steps}), Eval Metrics: {eval_metric_value}"
             )
 
+        if step in task_config.save_step_points:
+            utils.save_lora_state(experiment_name, step, lora_state.params)
 
-def main():
-    task_config = configs.TaskConfig()
-    task_config.lora_depth = 2
-    task_config.lora_rank = 8
-    finetune(task_config)
-
-
-if __name__ == "__main__":
-    main()
+    if -1 in task_config.save_step_points:
+        utils.save_lora_state(
+            experiment_name, task_config.num_train_steps, lora_state.params
+        )

@@ -76,6 +76,7 @@ class LoRA(nn.Module):
     init_scale: float = 1e-3
     depth: int = 3
     inner_dims: Optional[int] = None
+    alpha: int = 1
 
     def setup(self):
         dmfs = {}
@@ -90,7 +91,7 @@ class LoRA(nn.Module):
         self.dmfs = dmfs
 
     def __call__(self):
-        return {k: v() for k, v in self.dmfs.items()}
+        return {k: self.alpha * v() for k, v in self.dmfs.items()}
 
     def adapt(self, model_params):
         updates = self()
@@ -128,10 +129,14 @@ def create_lora_model_from_config(
 ) -> LoRA:
     flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
     flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
+    if task_config.lora_adapt_type == configs.LoraAdaptType.only_query_value:
+        filter_fn = lambda name, _: "query/kernel" in name or "value/kernel" in name
+    else:
+        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= 768
     filtered_flat_model_params_shape_dict = {
-        k: v
-        for k, v in flat_model_params_shape_dict.items()
-        if task_config.lora_adapt_filter(k, v)
+        name: shape
+        for name, shape in flat_model_params_shape_dict.items()
+        if filter_fn(name, shape)
     }
 
     lora_model = LoRA(
@@ -139,6 +144,7 @@ def create_lora_model_from_config(
         depth=task_config.lora_depth,
         init_scale=task_config.lora_init_scale,
         inner_dims=task_config.lora_rank,
+        alpha=task_config.lora_alpha,
     )
 
     return lora_model
