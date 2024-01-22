@@ -81,6 +81,9 @@ def finetune(task_config: configs.TaskConfig):
 
     train_metrics = []
 
+    if 0 in task_config.save_step_points:
+        utils.save_lora_params(experiment_name, 0, lora_state.params)
+
     for step, train_batch in enumerate(tqdm_train_iterator, 1):
         # Iterator is infinite, need to break out
         if step > task_config.num_train_steps:
@@ -128,9 +131,4 @@ def finetune(task_config: configs.TaskConfig):
             )
 
         if step in task_config.save_step_points:
-            utils.save_lora_state(experiment_name, step, lora_state.params)
-
-    if -1 in task_config.save_step_points:
-        utils.save_lora_state(
-            experiment_name, task_config.num_train_steps, lora_state.params
-        )
+            utils.save_lora_params(experiment_name, step, lora_state.params)

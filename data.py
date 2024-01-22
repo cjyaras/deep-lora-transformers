@@ -10,12 +10,10 @@ import transformers
 
 import configs
 
-Dataset = datasets.arrow_dataset.Dataset
-
 
 def load_dataset_from_config(
     task_config: configs.TaskConfig,
-) -> Tuple[Dataset, Dataset, int, bool]:
+) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset, int, bool]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
     train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
         task_config.finetune_task_name,
@@ -33,7 +31,7 @@ def load_dataset(
     max_seq_length: Optional[int],
     num_train_samples: Optional[int],
     sample_seed: int,
-) -> Tuple[Dataset, Dataset, int, bool]:
+) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset, int, bool]:
     raw_datasets = datasets.load_dataset("glue", finetune_task_name)
     is_regression = finetune_task_name == "stsb"
 
@@ -87,8 +85,8 @@ def load_dataset(
     eval_dataset = processed_datasets[  # type: ignore
         "validation_matched" if finetune_task_name == "mnli" else "validation"
     ]
-    train_dataset = cast(Dataset, train_dataset)
-    eval_dataset = cast(Dataset, eval_dataset)
+    train_dataset = cast(datasets.arrow_dataset.Dataset, train_dataset)
+    eval_dataset = cast(datasets.arrow_dataset.Dataset, eval_dataset)
     return train_dataset, eval_dataset, num_labels, is_regression
 
 

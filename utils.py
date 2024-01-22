@@ -20,7 +20,7 @@ def write_eval_metric(summary_writer, eval_metrics, step):
         summary_writer.scalar(f"eval_{metric_name}", value, step)
 
 
-def save_lora_state(
+def save_lora_params(
     experiment_name: str, step: int, lora_params: flax.core.FrozenDict[str, jax.Array]
 ):
     flax.training.checkpoints.save_checkpoint(
@@ -35,7 +35,7 @@ def save_lora_state(
     )
 
 
-def load_lora_state(experiment_name: str, step: int):
+def load_lora_params(experiment_name: str, step: int):
     return flax.training.checkpoints.restore_checkpoint(
         os.path.join(
             "/home/ubuntu/deep-lora-transformers",
@@ -46,6 +46,6 @@ def load_lora_state(experiment_name: str, step: int):
     )
 
 
-def get_task_config_from_json(experiment_dir: str):
-    with open(os.path.join(experiment_dir, "config.json"), "r") as f:
+def get_task_config_from_json(experiment_name: str):
+    with open(os.path.join(experiment_name, "config.json"), "r") as f:
         return configs.TaskConfig.from_json(f.read())  # type: ignore

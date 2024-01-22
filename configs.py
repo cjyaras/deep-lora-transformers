@@ -31,14 +31,14 @@ class TaskConfig:
 
     # Data hparams
     finetune_task_name: str = "stsb"
-    max_seq_length: Optional[int] = 32
-    num_train_samples: Optional[int] = 4
+    max_seq_length: Optional[int] = 128
+    num_train_samples: Optional[int] = None
 
     # Model hparams
     pretrain_model: str = "bert-base-cased"
 
     # Lora hparams
-    lora_adapt_type: LoraAdaptType = LoraAdaptType.only_query_value
+    lora_adapt_type: LoraAdaptType = LoraAdaptType.all_dense
     lora_depth: int = 3
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
@@ -46,15 +46,15 @@ class TaskConfig:
 
     # Training hparams
     num_train_steps: int = 100
-    train_batch_size: int = 4
+    train_batch_size: int = 16
     eval_batch_size: int = 32
     num_warmup_steps: int = 0
-    learning_rate: float = 5e-4
+    learning_rate: float = 5e-5
     weight_decay: float = 0.0
-    decay_ratio: float = 0.1
+    decay_ratio: float = 1.0
 
     # Logging hparams
-    log_eval_steps: int = 20
+    log_eval_steps: int = 10
     save_step_points: list = field(default_factory=list)
 
     def __post_init__(self):
