@@ -6,7 +6,6 @@ import evaluate
 import flax
 import flax.metrics.tensorboard
 import jax
-import numpy as np
 import tqdm.auto as tqdm_lib
 import transformers
 
@@ -15,6 +14,8 @@ import data
 import models
 import train
 import utils
+
+experiment_dir = os.path.join(os.getcwd(), "experiments")
 
 
 def finetune(task_config: configs.TaskConfig):
@@ -45,7 +46,7 @@ def finetune(task_config: configs.TaskConfig):
     rng = jax.random.PRNGKey(task_config.train_seed)
 
     lora_rng, rng = jax.random.split(rng)
-    lora_state = train.create_lora_train_state(
+    uncompressed_lora_state = train.create_lora_train_state(
         task_config,
         pretrain_model.params,  # type: ignore
         learning_rate_fn=learning_rate_fn,
@@ -58,31 +59,41 @@ def finetune(task_config: configs.TaskConfig):
         transformers.is_tensorboard_available()
     ), "Tensorboard is required for logging but is not installed."
 
-    experiment_name = f"{task_config.finetune_task_name}_lora"
-    experiment_name += f"_depth={task_config.lora_depth}"
-    if task_config.lora_rank is not None:
-        experiment_name += f"_rank={task_config.lora_rank}"
-    if task_config.num_train_samples is not None:
-        experiment_name += f"_samples={len(train_dataset)}"
-    if os.path.exists(experiment_name):
-        shutil.rmtree(experiment_name)
-    summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_name)
+    experiment_name = utils.get_experiment_name(task_config)
+    experiment_path = os.path.join(experiment_dir, experiment_name)
 
-    with open(os.path.join(experiment_name, "config.json"), "w") as f:
+    if os.path.exists(experiment_path):
+        shutil.rmtree(experiment_path)
+    summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_path)
+
+    with open(os.path.join(experiment_path, "config.json"), "w") as f:
         f.write(task_config.to_json(indent=4))  # type: ignore
 
     dropout_rng, input_rng, rng = jax.random.split(rng, 3)
     train_iterator = data.create_train_iterator(
         input_rng, train_dataset, task_config.train_batch_size
     )
+
+    # Compression
+
+    if task_config.lora_compress:
+        batch = next(train_iterator)
+        data.create_train_iterator(
+            input_rng, train_dataset, task_config.train_batch_size
+        )
+        lora_state = train.create_compressed_lora_train_state(
+            uncompressed_lora_state, model_state, batch, dropout_rng, task_config
+        )
+    else:
+        lora_state = uncompressed_lora_state
+
+    train_metrics = []
     tqdm_train_iterator = tqdm_lib.tqdm(
         train_iterator, total=task_config.num_train_steps
     )
 
-    train_metrics = []
-
     if 0 in task_config.save_step_points:
-        utils.save_lora_params(experiment_name, 0, lora_state.params)
+        utils.save_lora_params(experiment_path, 0, lora_state.params)
 
     for step, train_batch in enumerate(tqdm_train_iterator, 1):
         # Iterator is infinite, need to break out
@@ -98,7 +109,6 @@ def finetune(task_config: configs.TaskConfig):
             step % task_config.log_eval_steps == 0
             or step == task_config.num_train_steps
         ):
-            # Save metrics
             utils.write_train_metric(summary_writer, train_metrics, step)
             train_metrics = []
 
@@ -111,12 +121,8 @@ def finetune(task_config: configs.TaskConfig):
                 total=math.ceil(len(eval_dataset) / task_config.eval_batch_size),
             )
             for eval_batch in tqdm_eval_iterator:
-                labels = eval_batch.pop("labels")
-                padded_eval_batch = jax.tree_util.tree_map(
-                    lambda x: np.pad(
-                        x, ((0, task_config.eval_batch_size - len(labels)), (0, 0))  # type: ignore
-                    ),  # type: ignore
-                    eval_batch,
+                padded_eval_batch, labels = utils.pad_to_batch_size(
+                    eval_batch, task_config.eval_batch_size
                 )
                 padded_predictions = eval_step(
                     model_state, lora_state, padded_eval_batch
@@ -131,4 +137,4 @@ def finetune(task_config: configs.TaskConfig):
             )
 
         if step in task_config.save_step_points:
-            utils.save_lora_params(experiment_name, step, lora_state.params)
+            utils.save_lora_params(experiment_path, step, lora_state.params)

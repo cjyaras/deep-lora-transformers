@@ -42,7 +42,8 @@ class TaskConfig:
     lora_depth: int = 3
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
-    lora_alpha: int = 1
+    lora_compress: bool = False
+    lora_gamma: float = 0.01
 
     # Training hparams
     num_train_steps: int = 100

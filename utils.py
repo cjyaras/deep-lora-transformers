@@ -4,8 +4,43 @@ import flax
 import flax.struct
 import flax.training.checkpoints
 import jax
+import jax.numpy as jnp
+import numpy as np
 
 import configs
+
+# Misc functions
+
+
+def pad_to_batch_size(batch, target_batch_size):
+    labels = batch.pop("labels")
+    padded_batch = jax.tree_util.tree_map(
+        lambda x: np.pad(
+            x, ((0, target_batch_size - len(labels)), (0, 0))  # type: ignore
+        ),  # type: ignore
+        batch,
+    )
+    return padded_batch, labels
+
+
+def get_filtered_flat_params_shape_dict(model_params, task_config):
+    flat_params = flax.traverse_util.flatten_dict(model_params, sep="/")
+    flat_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_params)
+    if task_config.lora_adapt_type == configs.LoraAdaptType.only_query_value:
+        filter_fn = (
+            lambda flat_path, _: "query/kernel" in flat_path
+            or "value/kernel" in flat_path
+        )
+    else:
+        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= 768
+    return {
+        name: shape
+        for name, shape in flat_params_shape_dict.items()
+        if filter_fn(name, shape)
+    }
+
+
+# Training/logging functions
 
 
 def write_train_metric(summary_writer, train_metrics, step):
@@ -21,12 +56,11 @@ def write_eval_metric(summary_writer, eval_metrics, step):
 
 
 def save_lora_params(
-    experiment_name: str, step: int, lora_params: flax.core.FrozenDict[str, jax.Array]
+    experiment_path: str, step: int, lora_params: flax.core.FrozenDict[str, jax.Array]
 ):
     flax.training.checkpoints.save_checkpoint(
         ckpt_dir=os.path.join(
-            "/home/ubuntu/deep-lora-transformers",
-            experiment_name,
+            experiment_path,
             "checkpoints",
         ),
         step=step,
@@ -35,11 +69,10 @@ def save_lora_params(
     )
 
 
-def load_lora_params(experiment_name: str, step: int):
+def load_lora_params(experiment_path: str, step: int):
     return flax.training.checkpoints.restore_checkpoint(
         os.path.join(
-            "/home/ubuntu/deep-lora-transformers",
-            experiment_name,
+            experiment_path,
             f"checkpoints/checkpoint_{step}",
         ),
         target=None,
@@ -49,3 +82,13 @@ def load_lora_params(experiment_name: str, step: int):
 def get_task_config_from_json(experiment_name: str):
     with open(os.path.join(experiment_name, "config.json"), "r") as f:
         return configs.TaskConfig.from_json(f.read())  # type: ignore
+
+
+def get_experiment_name(task_config: configs.TaskConfig):
+    experiment_name = f"{task_config.finetune_task_name}_lora"
+    experiment_name += f"_depth={task_config.lora_depth}"
+    if task_config.lora_rank is not None:
+        experiment_name += f"_rank={task_config.lora_rank}"
+    if task_config.num_train_samples is not None:
+        experiment_name += f"_samples={task_config.num_train_samples}"
+    return experiment_name

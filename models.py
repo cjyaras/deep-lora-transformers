@@ -3,95 +3,113 @@ from typing import Optional, Tuple
 import flax
 import flax.linen as nn
 import jax
-import jax.numpy as jnp
 import transformers
 
 import configs
+import utils
 
 
 class MatrixFactorization(nn.Module):
-    outer_dims: int | Tuple[int, int]
-    init_scale: float = 1e-3
-    depth: int = 3
-    inner_dims: Optional[int] = None
+    shape: Tuple[int, int]
+    init_scale: float
+    depth: int
+    rank: Optional[int]
 
     def setup(self):
-        outer_dims = (
-            (self.outer_dims, self.outer_dims)
-            if isinstance(self.outer_dims, int)
-            else self.outer_dims
-        )
-        inner_dims = self.inner_dims if self.inner_dims else min(outer_dims)
-        assert inner_dims <= min(
-            outer_dims
-        ), f"inner_dims {inner_dims} must be smaller than outer_dims {outer_dims}"
+        assert self.depth >= 2, "depth must be at least 2"
+        rank = self.rank if self.rank else min(self.shape)
+        assert rank <= min(
+            self.shape
+        ), f"rank {rank} must be smaller than outer dimensions {self.shape}"
+        init_fn = nn.initializers.orthogonal(scale=self.init_scale)
+
         layers = []
-        if self.depth == 1:
+        layers.append(
+            self.param(
+                "w0",
+                init_fn,
+                (rank, self.shape[1]),
+            )
+        )
+        for i in range(1, self.depth - 1):
             layers.append(
                 self.param(
-                    "w",
-                    nn.initializers.orthogonal(scale=self.init_scale),
-                    outer_dims,
+                    f"w{i}",
+                    init_fn,
+                    (rank, rank),
                 )
             )
-            self.layers = layers
-            return
-        else:
-            layers.append(
-                self.param(
-                    "w0",
-                    nn.initializers.orthogonal(scale=self.init_scale),
-                    (inner_dims, outer_dims[1]),
-                )
+        layers.append(
+            self.param(
+                f"w{self.depth-1}",
+                init_fn,
+                (self.shape[0], rank),
             )
-            for i in range(1, self.depth - 1):
-                layers.append(
-                    self.param(
-                        f"w{i}",
-                        nn.initializers.orthogonal(scale=self.init_scale),
-                        (inner_dims, inner_dims),
-                    )
-                )
-            layers.append(
-                self.param(
-                    f"w{self.depth-1}",
-                    nn.initializers.orthogonal(scale=self.init_scale),
-                    (outer_dims[0], inner_dims),
-                )
-            )
+        )
         self.layers = layers
 
     def __call__(self):
-        if self.depth == 1:
-            return self.layers[0]
-        else:
-            x = self.layers[0]
-            for w in self.layers[1:]:
-                x = w @ x
-            return x
+        x = self.layers[0]
+        for w in self.layers[1:]:
+            x = w @ x
+        return x
+
+
+class CompressedMatrixFactorization(nn.Module):
+    shape: Tuple[int, int]
+    init_scale: float
+    depth: int
+    rank: int
+
+    def setup(self):
+        self.left_factor = self.param(
+            "left", nn.initializers.orthogonal(), (self.shape[0], self.rank)
+        )
+        self.right_factor = self.param(
+            "right", nn.initializers.orthogonal(), (self.rank, self.shape[1])
+        )
+        self.mf = MatrixFactorization(
+            (self.rank, self.rank), self.init_scale, self.depth, None
+        )
+
+    def __call__(self):
+        return self.left_factor @ self.mf() @ self.right_factor
 
 
 class LoRA(nn.Module):
     flat_params_shape_dict: dict
-    init_scale: float = 1e-3
-    depth: int = 3
-    inner_dims: Optional[int] = None
-    alpha: int = 1
+    init_scale: float
+    depth: int
+    rank: Optional[int]
+    compressed: bool = False
 
     def setup(self):
         dmfs = {}
-        for param, shape in self.flat_params_shape_dict.items():
-            dmfs[param] = MatrixFactorization(
-                outer_dims=shape,
-                init_scale=self.init_scale,
-                depth=self.depth,
-                inner_dims=self.inner_dims,
-                name=param,
-            )
+        for flat_param_path, shape in self.flat_params_shape_dict.items():
+            if self.compressed:
+                assert (
+                    self.rank is not None
+                ), "rank must be specified for compressed LoRA"
+                mf = CompressedMatrixFactorization(
+                    shape=shape,
+                    init_scale=self.init_scale,
+                    depth=self.depth,
+                    rank=self.rank,
+                    name=flat_param_path,
+                )
+            else:
+                mf = MatrixFactorization(
+                    shape=shape,
+                    init_scale=self.init_scale,
+                    depth=self.depth,
+                    rank=self.rank,
+                    name=flat_param_path,
+                )
+            dmfs[flat_param_path] = mf
         self.dmfs = dmfs
 
     def __call__(self):
-        return {k: self.alpha * v() for k, v in self.dmfs.items()}
+        return {k: v() for k, v in self.dmfs.items()}
 
     def adapt(self, model_params):
         updates = self()
@@ -127,24 +145,15 @@ def create_pretrain_model_from_config(
 def create_lora_model_from_config(
     task_config: configs.TaskConfig, model_params: flax.core.FrozenDict[str, jax.Array]
 ) -> LoRA:
-    flat_model_params = flax.traverse_util.flatten_dict(model_params, sep="/")
-    flat_model_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_model_params)
-    if task_config.lora_adapt_type == configs.LoraAdaptType.only_query_value:
-        filter_fn = lambda name, _: "query/kernel" in name or "value/kernel" in name
-    else:
-        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= 768
-    filtered_flat_model_params_shape_dict = {
-        name: shape
-        for name, shape in flat_model_params_shape_dict.items()
-        if filter_fn(name, shape)
-    }
+    filtered_flat_model_params_shape_dict = utils.get_filtered_flat_params_shape_dict(
+        model_params, task_config
+    )
 
     lora_model = LoRA(
         flat_params_shape_dict=filtered_flat_model_params_shape_dict,  # type: ignore
         depth=task_config.lora_depth,
         init_scale=task_config.lora_init_scale,
-        inner_dims=task_config.lora_rank,
-        alpha=task_config.lora_alpha,
+        rank=task_config.lora_rank if not task_config.lora_compress else None,
     )
 
     return lora_model
