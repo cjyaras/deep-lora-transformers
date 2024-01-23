@@ -3,5 +3,4 @@
 *.csv
 *.png
 *.ipynb
-*plot*
 *experiments*
