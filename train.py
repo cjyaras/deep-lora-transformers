@@ -165,6 +165,7 @@ def create_lora_train_state(
     )
 
 
+# TODO: Move things to numpy (CPU) to reduce GPU memory consumption.
 def create_compressed_lora_train_state(
     uncompressed_lora_state: LoraTrainState,
     model_state: ModelState,
@@ -190,14 +191,16 @@ def create_compressed_lora_train_state(
 
     compressed_lora_params = {}
     for k, g in grads.items():
-        mf_params = {}
+        comp_mf_params = {}
         U, _, _ = jnp.linalg.svd(g[f"w{task_config.lora_depth-1}"])
-        mf_params["left"] = U[:, :rank]
+        comp_mf_params["left"] = U[:, :rank]
         _, _, VT = jnp.linalg.svd(g["w0"])
-        mf_params["right"] = VT[:rank, :]
+        comp_mf_params["right"] = VT[:rank, :]
+        mf_params = {}
         for w in g.keys():
             mf_params[w] = task_config.lora_init_scale * jnp.eye(rank)
-        compressed_lora_params[k] = mf_params
+        comp_mf_params["mf"] = mf_params
+        compressed_lora_params[k] = comp_mf_params
 
     inner_tx = uncompressed_lora_state.tx
     outer_tx = create_optimizer(

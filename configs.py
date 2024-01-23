@@ -20,7 +20,7 @@ task_to_keys = {
 
 class LoraAdaptType(str, Enum):
     only_query_value = "only_query_value"
-    all_dense = "all_dense"
+    attention_mlp = "attention_mlp"
 
 
 @dataclass_json
@@ -38,24 +38,24 @@ class TaskConfig:
     pretrain_model: str = "bert-base-cased"
 
     # Lora hparams
-    lora_adapt_type: LoraAdaptType = LoraAdaptType.all_dense
+    lora_adapt_type: LoraAdaptType = LoraAdaptType.only_query_value
     lora_depth: int = 3
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
     lora_compress: bool = False
-    lora_gamma: float = 0.01
+    lora_gamma: float = 1e-3
 
     # Training hparams
-    num_train_steps: int = 100
+    num_train_steps: int = 200
     train_batch_size: int = 16
     eval_batch_size: int = 32
     num_warmup_steps: int = 0
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-4
     weight_decay: float = 0.0
     decay_ratio: float = 1.0
 
     # Logging hparams
-    log_eval_steps: int = 10
+    log_eval_steps: int = 20
     save_step_points: list = field(default_factory=list)
 
     def __post_init__(self):

@@ -32,7 +32,13 @@ def get_filtered_flat_params_shape_dict(model_params, task_config):
             or "value/kernel" in flat_path
         )
     else:
-        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= 768
+        filter_fn = (
+            lambda flat_path, _: "query/kernel" in flat_path
+            or "key/kernel" in flat_path
+            or "value/kernel" in flat_path
+            or "intermediate/dense/kernel" in flat_path
+            or "output/dense/kernel" in flat_path
+        )
     return {
         name: shape
         for name, shape in flat_params_shape_dict.items()
@@ -79,8 +85,8 @@ def load_lora_params(experiment_path: str, step: int):
     )
 
 
-def get_task_config_from_json(experiment_name: str):
-    with open(os.path.join(experiment_name, "config.json"), "r") as f:
+def get_task_config_from_json(experiment_path: str):
+    with open(os.path.join(experiment_path, "config.json"), "r") as f:
         return configs.TaskConfig.from_json(f.read())  # type: ignore
 
 

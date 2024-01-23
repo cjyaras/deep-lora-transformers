@@ -75,15 +75,16 @@ def finetune(task_config: configs.TaskConfig):
     )
 
     # Compression
-
     if task_config.lora_compress:
         batch = next(train_iterator)
-        data.create_train_iterator(
-            input_rng, train_dataset, task_config.train_batch_size
-        )
         lora_state = train.create_compressed_lora_train_state(
             uncompressed_lora_state, model_state, batch, dropout_rng, task_config
         )
+        del uncompressed_lora_state
+        train_iterator = data.create_train_iterator(
+            input_rng, train_dataset, task_config.train_batch_size
+        )
+        print(flax.traverse_util.flatten_dict(lora_state.params, sep="/").keys())
     else:
         lora_state = uncompressed_lora_state
 

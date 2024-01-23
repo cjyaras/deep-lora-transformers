@@ -93,6 +93,7 @@ def load_dataset(
 def create_train_iterator(
     rng: jax.Array, dataset: datasets.arrow_dataset.Dataset, batch_size: int
 ) -> Iterator[dict[Any, np.ndarray]]:
+    assert batch_size <= len(dataset), "Batch size must be smaller than dataset size."
     if len(dataset) == batch_size:
         # If dataset size is equal to batch size, then we can just return the dataset as a batch.
         batch = dataset[:]
