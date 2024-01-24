@@ -28,10 +28,11 @@ class LoraAdaptType(str, Enum):
 class TaskConfig:
     train_seed: int = 0
     sample_seed: int = 0
+    identifier: str = ""
 
     # Data hparams
     finetune_task_name: str = "stsb"
-    max_seq_length: Optional[int] = 128
+    max_seq_length: Optional[int] = None
     num_train_samples: Optional[int] = None
 
     # Model hparams
@@ -43,11 +44,11 @@ class TaskConfig:
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
     lora_compress: bool = False
-    lora_gamma: float = 1e-3
+    lora_gamma: float = 0
 
     # Training hparams
     num_train_steps: int = 200
-    train_batch_size: int = 16
+    train_batch_size: int = 1
     eval_batch_size: int = 32
     num_warmup_steps: int = 0
     learning_rate: float = 1e-4

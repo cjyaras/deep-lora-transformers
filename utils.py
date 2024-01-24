@@ -12,6 +12,15 @@ import configs
 # Misc functions
 
 
+def svd(x):
+    U, s, VT = np.linalg.svd(x)
+    return U, s, VT.T
+
+
+def cosine_angle(U, V):
+    return np.linalg.norm(np.linalg.svd(U.T @ V, compute_uv=False), ord=np.inf)
+
+
 def pad_to_batch_size(batch, target_batch_size):
     labels = batch.pop("labels")
     padded_batch = jax.tree_util.tree_map(
@@ -97,4 +106,11 @@ def get_experiment_name(task_config: configs.TaskConfig):
         experiment_name += f"_rank={task_config.lora_rank}"
     if task_config.num_train_samples is not None:
         experiment_name += f"_samples={task_config.num_train_samples}"
+    if task_config.identifier is not None:
+        experiment_name += f"_{task_config.identifier}"
     return experiment_name
+
+
+def get_experiment_path(task_config: configs.TaskConfig):
+    experiment_name = get_experiment_name(task_config)
+    return os.path.join(os.getcwd(), "experiments", experiment_name)

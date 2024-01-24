@@ -6,6 +6,8 @@ def main():
     task_config = configs.TaskConfig()
     task_config.pretrain_model = "roberta-base"
     task_config.num_train_steps = 2000
+    task_config.max_seq_length = 128
+    task_config.train_batch_size = 16
     task_config.log_eval_steps = 200
     task_config.lora_depth = 2
     task_config.lora_init_scale = 1e-5

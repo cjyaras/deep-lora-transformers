@@ -6,6 +6,8 @@ def main():
     task_config = configs.TaskConfig()
     task_config.pretrain_model = "bert-base-cased"
     task_config.num_train_samples = 16
+    task_config.max_seq_length = 128
+    task_config.train_batch_size = 16
     task_config.num_train_steps = 200
     task_config.log_eval_steps = 20
     task_config.lora_depth = 2

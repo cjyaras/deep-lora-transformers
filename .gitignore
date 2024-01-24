@@ -2,5 +2,4 @@
 *pyc
 *.csv
 *.png
-*.ipynb
 *experiments*
