@@ -17,18 +17,20 @@ class MatrixFactorization(nn.Module):
 
     def setup(self):
         assert self.depth >= 2, "depth must be at least 2"
-        self.set_rank = self.rank if self.rank else min(self.shape)
-        assert self.set_rank <= min(
+        set_rank = self.rank if self.rank else min(self.shape)
+        assert set_rank <= min(
             self.shape
-        ), f"rank {self.set_rank} must be smaller than outer dimensions {self.shape}"
+        ), f"rank {set_rank} must be smaller than outer dimensions {self.shape}"
+
         init_fn = nn.initializers.orthogonal(scale=self.init_scale)
+        last_init_fn = nn.zeros_init()
 
         layers = []
         layers.append(
             self.param(
                 "w0",
                 init_fn,
-                (self.set_rank, self.shape[1]),
+                (set_rank, self.shape[1]),
             )
         )
         for i in range(1, self.depth - 1):
@@ -36,14 +38,14 @@ class MatrixFactorization(nn.Module):
                 self.param(
                     f"w{i}",
                     init_fn,
-                    (self.set_rank, self.set_rank),
+                    (set_rank, set_rank),
                 )
             )
         layers.append(
             self.param(
                 f"w{self.depth-1}",
-                init_fn,
-                (self.shape[0], self.set_rank),
+                last_init_fn,
+                (self.shape[0], set_rank),
             )
         )
         self.layers = layers
@@ -81,7 +83,7 @@ class LoRA(nn.Module):
     init_scale: float
     depth: int
     rank: Optional[int]
-    compressed: bool = False
+    compressed: bool
 
     def setup(self):
         dmfs = {}
@@ -154,6 +156,7 @@ def create_lora_model_from_config(
         depth=task_config.lora_depth,
         init_scale=task_config.lora_init_scale,
         rank=task_config.lora_rank if not task_config.lora_compress else None,
+        compressed=False,
     )
 
     return lora_model

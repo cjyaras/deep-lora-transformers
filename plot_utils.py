@@ -6,6 +6,7 @@ from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.ticker import MaxNLocator
 from tqdm.auto import tqdm
 
+import configs
 import models
 import utils
 
@@ -21,6 +22,8 @@ def plot_series(
     elev=30,
     azim=-50,
     roll=0,
+    alpha=1.0,
+    linewidth=1.0,
 ):
     n_x_indices, n_y_indices = series.shape
     x_indices = np.arange(n_x_indices)
@@ -43,7 +46,8 @@ def plot_series(
         )
 
     spectrum_poly = PolyCollection(spectrum_verts)
-    spectrum_poly.set_alpha(0.8)
+    spectrum_poly.set_linewidth(linewidth)
+    spectrum_poly.set_alpha(alpha)
     spectrum_poly.set_facecolor(
         plt.colormaps[color](np.linspace(0, 0.7, len(spectrum_verts)))  # type: ignore
     )
@@ -59,7 +63,7 @@ def plot_series(
         for idx in y_indices:
             path_verts.append([*zip(x_points, series[:, idx])])
         path_line = LineCollection(path_verts)
-        path_line.set_linewidth(1)
+        path_line.set_linewidth(linewidth)
         path_line.set_edgecolor("black")
         ax.add_collection3d(path_line, zs=y_indices, zdir="x")
 
@@ -95,9 +99,9 @@ def plot_final_spectra(experiment_path: str):
     series = np.array(list(sv_vals_dict.values()))[:, :5]
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    plot_series(ax, series, color="plasma", zoom=0.8)
+    plot_series(ax, series, color="plasma", zoom=0.8, alpha=1.0)
     ax.set_yticks([])
-    ax.set_xlabel("SV Index", fontsize=14)
+    ax.set_xlabel("\nSV Index", fontsize=14)
     ax.set_ylabel("Adapted Layer", fontsize=14)
     ax.set_yticks([])
     ax.set_zticks([])  # type: ignore
@@ -143,7 +147,9 @@ def get_cosine_angle_traj(experiment_path: str, rank: int, side="left"):
     return cosine_angle_vals_dict, step_vals
 
 
-def plot_cosine_angle_traj(experiment_path: str, rank: int):
+def plot_cosine_angle_traj(
+    experiment_path: str, rank: int, task_config: configs.TaskConfig
+):
     cosine_angle_vals_dict, step_vals = get_cosine_angle_traj(experiment_path, rank)
     series = np.array(list(cosine_angle_vals_dict.values()))
     fig = plt.figure()
@@ -158,8 +164,8 @@ def plot_cosine_angle_traj(experiment_path: str, rank: int):
         azim=-130,
         roll=0,
     )
-    ax.set_xticks(np.linspace(0, 2000, 5, dtype=int))
-    ax.set_xlabel("Iterations", fontsize=14)
+    ax.set_xticks(np.linspace(0, task_config.num_train_steps, 5, dtype=int))
+    ax.set_xlabel("\nIterations", fontsize=14)
     ax.set_ylabel("Adapted Layer", fontsize=14)
     ax.set_yticks([])
     ax.set_zlabel("Cosine Angle", fontsize=14)  # type: ignore

@@ -4,31 +4,17 @@ from typing import Optional
 
 from dataclasses_json import dataclass_json
 
-# Glue tasks
-task_to_keys = {
-    "cola": ("sentence", None),
-    "mnli": ("premise", "hypothesis"),
-    "mrpc": ("sentence1", "sentence2"),
-    "qnli": ("question", "sentence"),
-    "qqp": ("question1", "question2"),
-    "rte": ("sentence1", "sentence2"),
-    "sst2": ("sentence", None),
-    "stsb": ("sentence1", "sentence2"),
-    "wnli": ("sentence1", "sentence2"),
-}
-
 
 class LoraAdaptType(str, Enum):
-    only_query_value = "only_query_value"
-    attention_mlp = "attention_mlp"
+    only_query_value = "only-query-value"
+    attention_mlp = "attention-mlp"
+    all_dense = "all-dense"
 
 
 @dataclass_json
 @dataclass
 class TaskConfig:
-    train_seed: int = 0
-    sample_seed: int = 0
-    identifier: str = ""
+    identifier: Optional[str] = None
 
     # Data hparams
     finetune_task_name: str = "stsb"
@@ -41,7 +27,7 @@ class TaskConfig:
     # Lora hparams
     lora_adapt_type: LoraAdaptType = LoraAdaptType.only_query_value
     lora_depth: int = 3
-    lora_init_scale: float = 1e-3
+    lora_init_scale: float = 1
     lora_rank: Optional[int] = None
     lora_compress: bool = False
     lora_gamma: float = 0
@@ -53,11 +39,9 @@ class TaskConfig:
     num_warmup_steps: int = 0
     learning_rate: float = 1e-4
     weight_decay: float = 0.0
-    decay_ratio: float = 1.0
+    decay_ratio: float = 0.1
 
     # Logging hparams
-    log_eval_steps: int = 20
+    log_eval_steps: int = 200
     save_step_points: list = field(default_factory=list)
-
-    def __post_init__(self):
-        assert self.finetune_task_name in task_to_keys.keys()
+    save_dir: str = "experiments"

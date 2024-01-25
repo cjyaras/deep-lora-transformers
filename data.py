@@ -10,19 +10,42 @@ import transformers
 
 import configs
 
+# Glue tasks
+task_to_keys = {
+    "cola": ("sentence", None),
+    "mnli": ("premise", "hypothesis"),
+    "mrpc": ("sentence1", "sentence2"),
+    "qnli": ("question", "sentence"),
+    "qqp": ("question1", "question2"),
+    "rte": ("sentence1", "sentence2"),
+    "sst2": ("sentence", None),
+    "stsb": ("sentence1", "sentence2"),
+}
+
+task_to_num_labels = {
+    "cola": 2,
+    "mnli": 3,
+    "mrpc": 2,
+    "qnli": 2,
+    "qqp": 2,
+    "rte": 2,
+    "sst2": 2,
+    "stsb": 1,
+}
+
 
 def load_dataset_from_config(
-    task_config: configs.TaskConfig,
-) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset, int, bool]:
+    task_config: configs.TaskConfig, seed: int
+) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
-    train_dataset, eval_dataset, num_labels, is_regression = load_dataset(
+    train_dataset, eval_dataset = load_dataset(
         task_config.finetune_task_name,
         tokenizer,
         task_config.max_seq_length,
         task_config.num_train_samples,
-        task_config.sample_seed,
+        seed,
     )
-    return train_dataset, eval_dataset, num_labels, is_regression
+    return train_dataset, eval_dataset
 
 
 def load_dataset(
@@ -31,15 +54,8 @@ def load_dataset(
     max_seq_length: Optional[int],
     num_train_samples: Optional[int],
     sample_seed: int,
-) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset, int, bool]:
+) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset]:
     raw_datasets = datasets.load_dataset("glue", finetune_task_name)
-    is_regression = finetune_task_name == "stsb"
-
-    if not is_regression:
-        label_list = raw_datasets["train"].features["label"].names  # type: ignore
-        num_labels = len(label_list)
-    else:
-        num_labels = 1
 
     def length_of(example):
         texts = (
@@ -50,7 +66,7 @@ def load_dataset(
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
-    sentence1_key, sentence2_key = configs.task_to_keys[finetune_task_name]
+    sentence1_key, sentence2_key = task_to_keys[finetune_task_name]
 
     if max_seq_length is not None:
         for k, v in raw_datasets.items():  # type: ignore
@@ -87,7 +103,7 @@ def load_dataset(
     ]
     train_dataset = cast(datasets.arrow_dataset.Dataset, train_dataset)
     eval_dataset = cast(datasets.arrow_dataset.Dataset, eval_dataset)
-    return train_dataset, eval_dataset, num_labels, is_regression
+    return train_dataset, eval_dataset
 
 
 def create_train_iterator(
