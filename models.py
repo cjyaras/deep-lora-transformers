@@ -22,8 +22,12 @@ class MatrixFactorization(nn.Module):
             self.shape
         ), f"rank {set_rank} must be smaller than outer dimensions {self.shape}"
 
-        init_fn = nn.initializers.orthogonal(scale=self.init_scale)
-        last_init_fn = nn.zeros_init()
+        if self.depth == 2:
+            init_fn = nn.initializers.normal(stddev=1)
+            last_init_fn = nn.zeros_init()
+        else:
+            init_fn = nn.initializers.orthogonal(scale=self.init_scale)
+            last_init_fn = init_fn
 
         layers = []
         layers.append(
