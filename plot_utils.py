@@ -1,14 +1,26 @@
+import json
+import os
 from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.ticker import MaxNLocator
-from tqdm.auto import tqdm
 
 import configs
 import models
 import utils
+
+metric_dict = {
+    "cola": "eval_matthews_correlation",
+    "sst2": "eval_accuracy",
+    "stsb": "eval_pearson",
+    "qqp": "eval_accuracy",
+    "mrpc": "eval_accuracy",
+    "mnli": "eval_accuracy",
+    "qnli": "eval_accuracy",
+    "rte": "eval_accuracy",
+}
 
 
 def plot_series(
@@ -88,7 +100,7 @@ def get_final_spectra(experiment_path: str):
     final_e2e = lora_model.apply({"params": final_lora_params})
     final_e2e = cast(dict, final_e2e)
     sv_vals_dict = {}
-    for k, v in tqdm(final_e2e.items()):
+    for k, v in final_e2e.items():
         sv_vals_dict[k] = np.linalg.svd(v, compute_uv=False)
 
     return sv_vals_dict
@@ -96,7 +108,7 @@ def get_final_spectra(experiment_path: str):
 
 def plot_final_spectra(experiment_path: str):
     sv_vals_dict = get_final_spectra(experiment_path=experiment_path)
-    series = np.array(list(sv_vals_dict.values()))[:, :5]
+    series = np.array(list(sv_vals_dict.values()))[:, :5]  # type: ignore
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     plot_series(ax, series, color="plasma", zoom=0.8, alpha=1.0)
@@ -124,7 +136,7 @@ def get_subspace_traj(experiment_path: str, rank: int):
         e2e = lora_model.apply({"params": lora_params})
         e2e = cast(dict, e2e)
 
-        for k, v in tqdm(e2e.items()):
+        for k, v in e2e.items():
             U, _, V = utils.svd(v)
             Ur, Vr = U[:, :rank], V[:, :rank]
             subspace_vals_dict[k].append((Ur, Vr))
@@ -170,3 +182,189 @@ def plot_cosine_angle_traj(
     ax.set_yticks([])
     ax.set_zlabel("Cosine Angle", fontsize=14)  # type: ignore
     return fig
+
+
+def smooth(scalars, weight):
+    """Exponential moving average."""
+    last = scalars[0]
+    smoothed = list()
+    for point in scalars:
+        smoothed_val = last * weight + (1 - weight) * point
+        smoothed.append(smoothed_val)
+        last = smoothed_val
+
+    return smoothed
+
+
+def read_results(experiment_path):
+    with open(os.path.join(experiment_path, "results.json")) as f:
+        results = json.load(f)
+    tags = results.keys()
+    result_dict = {}
+    for tag in tags:
+        step_vals, value_vals = list(
+            zip(*[(pair["step"], pair["value"]) for pair in results[tag]])
+        )
+        result_dict[tag] = (np.array(step_vals), np.array(value_vals))
+    return result_dict
+
+
+def get_fewshot_1024_results():
+    experiment_dir = "experiments/glue_fewshot_1024"
+    tasks = os.listdir(experiment_dir)
+
+    diff_dict = {}
+    take_last = True
+
+    def get_seed(run):
+        return int(run.split("_")[-1].split("=")[1])
+
+    for task in sorted(tasks):
+        runs = [run for run in os.listdir(os.path.join(experiment_dir, task))]
+        runs_2 = [run for run in runs if "depth=2" in run]
+        runs_3 = [run for run in runs if "depth=3" in run]
+        runs_2_results = np.zeros(len(runs_2))
+        runs_3_results = np.zeros(len(runs_3))
+        for run in runs:
+            seed = get_seed(run)
+            with open(os.path.join(experiment_dir, task, run, "results.json")) as f:
+                results = json.load(f)
+            values = [
+                entry["value"]
+                for entry in sorted(results[metric_dict[task]], key=lambda x: x["step"])
+            ]
+            if "depth=2" in run:
+                runs_2_results[seed] = values[-1] if take_last else max(values)
+            elif "depth=3" in run:
+                runs_3_results[seed] = values[-1] if take_last else max(values)
+        diff_dict[task] = runs_3_results - runs_2_results
+
+    labels, series = list(zip(*diff_dict.items()))
+    labels = list(labels)
+    series = list(series)
+    series.append(np.array(series).reshape(-1))
+    labels.append("overall")
+    return series, labels
+
+
+def plot_fewshot_1024_results():
+    series, labels = get_fewshot_1024_results()
+
+    def set_axis_style(ax, labels):
+        ax.set_xticks(np.arange(1, len(labels) + 1), labels=labels, fontsize=12)
+        ax.set_xlim(0.25, len(labels) + 0.75)
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.violinplot(series, showmeans=True, showextrema=False, widths=0.1)
+    ax.yaxis.grid(True)
+    ax.set_ylabel("$\Delta$", fontsize=12)
+    ax.hlines(0, 0, 10)
+
+    set_axis_style(ax, labels)
+    return fig
+
+
+def get_narrow_vs_wide_results():
+    experiment_dir = "experiments/stsb_fewshot_1024_narrow_vs_wide"
+    runs = os.listdir(experiment_dir)
+    narrow_run = [x for x in runs if "rank=8" in x][0]
+    wide_run = [x for x in runs if "rank=8" not in x][0]
+    narrow_results = read_results(os.path.join(experiment_dir, narrow_run))
+    wide_results = read_results(os.path.join(experiment_dir, wide_run))
+    train_step_vals, narrow_train_loss_vals = narrow_results["train_loss"]
+    _, wide_train_loss_vals = wide_results["train_loss"]
+    eval_step_vals, narrow_eval_vals = narrow_results[metric_dict["stsb"]]
+    _, wide_eval_vals = wide_results[metric_dict["stsb"]]
+    return (
+        train_step_vals,
+        narrow_train_loss_vals,
+        wide_train_loss_vals,
+        eval_step_vals,
+        narrow_eval_vals,
+        wide_eval_vals,
+    )
+
+
+def plot_narrow_vs_wide_results():
+    (
+        train_step_vals,
+        narrow_train_loss_vals,
+        wide_train_loss_vals,
+        eval_step_vals,
+        narrow_eval_vals,
+        wide_eval_vals,
+    ) = get_narrow_vs_wide_results()
+    fig, ax = plt.subplots(ncols=2, figsize=(9, 3))
+    smooth_fn = lambda x: smooth(x, 0.95)
+    linewidth = 4
+    ax[0].plot(
+        train_step_vals,
+        smooth_fn(narrow_train_loss_vals),
+        label="Narrow",
+        linewidth=linewidth,
+    )
+    ax[0].plot(
+        train_step_vals,
+        smooth_fn(wide_train_loss_vals),
+        label="Compressed",
+        linewidth=linewidth,
+    )
+    ax[0].set_xlabel("Iteration", fontsize=14)
+    ax[0].set_ylabel("Train Loss", fontsize=14)
+    ax[0].legend()
+    ax[1].plot(
+        eval_step_vals, smooth_fn(narrow_eval_vals), label="Narrow", linewidth=linewidth
+    )
+    ax[1].plot(
+        eval_step_vals,
+        smooth_fn(wide_eval_vals),
+        label="Compressed",
+        linewidth=linewidth,
+    )
+    ax[1].set_xlabel("Iteration", fontsize=14)
+    ax[1].set_ylabel("Pearson Coef", fontsize=14)
+    ax[1].legend()
+    return fig
+
+
+def get_fewshot_stsb_results():
+    experiment_dir = "experiments/stsb_fewshot"
+    sample_sizes = [int(x) for x in os.listdir(experiment_dir)]
+
+    diff_dict = {}
+    take_last = True
+
+    def get_seed(run):
+        return int(run.split("_")[-1].split("=")[1])
+
+    for sample_size in sorted(sample_sizes):
+        runs = [
+            run for run in os.listdir(os.path.join(experiment_dir, str(sample_size)))
+        ]
+        runs_2 = [run for run in runs if "depth=2" in run]
+        runs_3 = [run for run in runs if "depth=3" in run]
+        runs_2_results = np.zeros(len(runs_2))
+        runs_3_results = np.zeros(len(runs_3))
+        for run in runs:
+            seed = get_seed(run)
+            with open(
+                os.path.join(experiment_dir, str(sample_size), run, "results.json")
+            ) as f:
+                results = json.load(f)
+            values = [
+                entry["value"]
+                for entry in sorted(results["eval_pearson"], key=lambda x: x["step"])
+            ]
+            if "depth=2" in run:
+                runs_2_results[seed] = values[-1] if take_last else max(values)
+            elif "depth=3" in run:
+                runs_3_results[seed] = values[-1] if take_last else max(values)
+        diff_dict[sample_size] = (
+            runs_3_results,
+            runs_2_results,
+        )
+
+    labels, series = list(zip(*diff_dict.items()))
+    labels = list(labels)
+    series = list(series)
+    return series, labels
