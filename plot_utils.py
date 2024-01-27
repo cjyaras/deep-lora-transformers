@@ -4,8 +4,10 @@ from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.ticker import MaxNLocator
+from tqdm.auto import tqdm
 
 import configs
 import models
@@ -403,4 +405,44 @@ def plot_fewshot_stsb_results():
     ax.set_xlabel("# Training Examples", fontsize=14)
     ax.set_ylabel("Pearson Correlation", fontsize=14)
     ax.legend(fontsize=14)
+    return fig
+
+
+def get_fewshot_256_ranks():
+    experiment_dir = "experiments/stsb_256_checkpoints"
+    runs = os.listdir(experiment_dir)
+    run_2 = [run for run in runs if "depth=2" in run][0]
+    run_3 = [run for run in runs if "depth=3" in run][0]
+    task_config_2 = utils.get_task_config_from_json(
+        experiment_path=os.path.join(experiment_dir, run_2)
+    )
+    task_config_3 = utils.get_task_config_from_json(
+        experiment_path=os.path.join(experiment_dir, run_3)
+    )
+    model_params = models.create_pretrain_model_from_config(
+        task_config_2, num_labels=1
+    ).params  # type: ignore
+    lora_model_2 = models.create_lora_model_from_config(task_config_2, model_params)
+    lora_model_3 = models.create_lora_model_from_config(task_config_3, model_params)
+    run_2_e2e = lora_model_2.apply(
+        {"params": utils.load_lora_params(os.path.join(experiment_dir, run_2), 500)}
+    )
+    run_3_e2e = lora_model_3.apply(
+        {"params": utils.load_lora_params(os.path.join(experiment_dir, run_3), 500)}
+    )
+    run_2_ranks_norms = [(np.linalg.matrix_rank(v), np.linalg.norm(v, ord=2)) for v in tqdm(run_2_e2e.values())]  # type: ignore
+    run_3_ranks_norms = [(np.linalg.matrix_rank(v), np.linalg.norm(v, ord=2)) for v in tqdm(run_3_e2e.values())]  # type: ignore
+    run_2_ranks = [x[0] for x in run_2_ranks_norms]
+    run_3_ranks = [min(x[0], 8) if x[1] > 1e-3 else 0 for x in run_3_ranks_norms]  # type: ignore
+    return run_2_ranks, run_3_ranks
+
+
+def plot_fewshot_256_ranks():
+    run_2_ranks, run_3_ranks = get_fewshot_256_ranks()
+    fig, ax = plt.subplots()
+    sns.histplot(run_2_ranks, ax=ax)
+    sns.histplot(run_3_ranks, ax=ax)
+    ax.set_xlabel("Rank", fontsize=12)
+    ax.set_ylabel("Count", fontsize=12)
+    ax.legend(["Vanilla LoRA", "Deep Compressed LoRA"], fontsize=12)
     return fig

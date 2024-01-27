@@ -1,7 +1,4 @@
-import numpy as np
-
 import configs
-import data
 from finetune import finetune
 
 
