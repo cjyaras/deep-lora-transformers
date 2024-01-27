@@ -297,35 +297,40 @@ def plot_narrow_vs_wide_results():
         wide_eval_vals,
     ) = get_narrow_vs_wide_results()
     fig, ax = plt.subplots(ncols=2, figsize=(9, 3))
-    smooth_fn = lambda x: smooth(x, 0.95)
-    linewidth = 4
+
+    train_smooth_fn = lambda x: smooth(x, 0.99)
     ax[0].plot(
         train_step_vals,
-        smooth_fn(narrow_train_loss_vals),
+        train_smooth_fn(narrow_train_loss_vals),
+        color="g",
         label="Narrow",
-        linewidth=linewidth,
     )
     ax[0].plot(
         train_step_vals,
-        smooth_fn(wide_train_loss_vals),
-        label="Compressed",
-        linewidth=linewidth,
+        train_smooth_fn(wide_train_loss_vals),
+        color="b",
+        label="Wide",
     )
     ax[0].set_xlabel("Iteration", fontsize=14)
     ax[0].set_ylabel("Train Loss", fontsize=14)
-    ax[0].legend(fontsize=14)
+    ax[0].legend(fontsize=12)
+
+    eval_smooth_fn = lambda x: smooth(x, 0.95)
     ax[1].plot(
-        eval_step_vals, smooth_fn(narrow_eval_vals), label="Narrow", linewidth=linewidth
+        eval_step_vals,
+        eval_smooth_fn(narrow_eval_vals),
+        color="g",
+        label="Narrow",
     )
     ax[1].plot(
         eval_step_vals,
-        smooth_fn(wide_eval_vals),
-        label="Compressed",
-        linewidth=linewidth,
+        eval_smooth_fn(wide_eval_vals),
+        color="b",
+        label="Wide",
     )
     ax[1].set_xlabel("Iteration", fontsize=14)
     ax[1].set_ylabel("Pearson Corr.", fontsize=14)
-    ax[1].legend(fontsize=14)
+    ax[1].legend(fontsize=12)
     return fig
 
 
@@ -362,49 +367,49 @@ def get_fewshot_stsb_results():
             elif "depth=3" in run:
                 runs_3_results[seed] = values[-1] if take_last else max(values)
         diff_dict[sample_size] = (
-            runs_3_results,
             runs_2_results,
+            runs_3_results,
         )
 
-    labels, series = list(zip(*diff_dict.items()))
-    labels = list(labels)
-    series = list(series)
-    return series, labels
+    sample_sizes, eval_values = list(zip(*diff_dict.items()))
+    sample_sizes = list(sample_sizes)
+    eval_values = list(eval_values)
+    depth_2_values = [x[0] for x in eval_values]
+    depth_3_values = [x[1] for x in eval_values]
+    depth_2_values = np.array(depth_2_values)
+    depth_3_values = np.array(depth_3_values)
+    return sample_sizes, depth_2_values, depth_3_values
 
 
 def plot_fewshot_stsb_results():
-    eval_values, sample_sizes = get_fewshot_stsb_results()
-    depth_3_values = [x[0] for x in eval_values]
-    depth_2_values = [x[1] for x in eval_values]
-    depth_3_values = np.array(depth_3_values)
-    depth_2_values = np.array(depth_2_values)
+    sample_sizes, depth_2_values, depth_3_values = get_fewshot_stsb_results()
+    depth_2_mean = depth_2_values.mean(axis=1)
+    depth_2_std = depth_2_values.std(axis=1)
+    depth_3_mean = depth_3_values.mean(axis=1)
+    depth_3_std = depth_3_values.std(axis=1)
     fig, ax = plt.subplots()
-    ax.errorbar(
+    ax.plot(sample_sizes, depth_2_mean, label="Vanilla LoRA", color="orange")
+    ax.fill_between(
         sample_sizes,
-        depth_3_values.mean(axis=1),
-        fmt="-o",
-        yerr=depth_3_values.std(axis=1) / 2,
-        linewidth=4,
-        capsize=6,
-        markersize=7,
-        label="Deep Compressed LoRA",
+        depth_2_mean - depth_2_std / 2,
+        depth_2_mean + depth_2_std / 2,
+        alpha=0.1,
+        color="orange",
     )
-    ax.errorbar(
+    ax.plot(sample_sizes, depth_3_mean, label="Deep Compressed LoRA", color="blue")
+    ax.fill_between(
         sample_sizes,
-        depth_2_values.mean(axis=1),
-        fmt="-o",
-        yerr=depth_2_values.std(axis=1) / 2,
-        linewidth=2,
-        capsize=6,
-        markersize=7,
-        label="Vanilla LoRA",
+        depth_3_mean - depth_3_std / 2,
+        depth_3_mean + depth_3_std / 2,
+        alpha=0.1,
+        color="blue",
     )
     ax.set_xscale("log")
     ax.set_xticks([16, 64, 256], labels=["16", "64", "256"], fontsize=14)
     ax.minorticks_off()
     ax.set_xlabel("# Training Examples", fontsize=14)
     ax.set_ylabel("Pearson Correlation", fontsize=14)
-    ax.legend(fontsize=14)
+    ax.legend(fontsize=12)
     return fig
 
 
@@ -440,8 +445,8 @@ def get_fewshot_256_ranks():
 def plot_fewshot_256_ranks():
     run_2_ranks, run_3_ranks = get_fewshot_256_ranks()
     fig, ax = plt.subplots()
-    sns.histplot(run_2_ranks, ax=ax)
-    sns.histplot(run_3_ranks, ax=ax)
+    sns.histplot(run_2_ranks, ax=ax, color="orange")
+    sns.histplot(run_3_ranks, ax=ax, color="blue")
     ax.set_xlabel("Rank", fontsize=12)
     ax.set_ylabel("Count", fontsize=12)
     ax.legend(["Vanilla LoRA", "Deep Compressed LoRA"], fontsize=12)
