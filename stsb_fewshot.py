@@ -30,7 +30,7 @@ def run_experiments(num_samples, depth, rank, learning_rate, seeds):
 
 
 def main():
-    seeds = np.arange(10)
+    seeds = np.arange(10, 20)
     for num_samples in [16, 64, 256]:
         run_experiments(num_samples, depth=2, rank=8, learning_rate=1e-4, seeds=seeds)
         run_experiments(

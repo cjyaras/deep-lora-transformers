@@ -311,7 +311,7 @@ def plot_narrow_vs_wide_results():
     )
     ax[0].set_xlabel("Iteration", fontsize=14)
     ax[0].set_ylabel("Train Loss", fontsize=14)
-    ax[0].legend()
+    ax[0].legend(fontsize=14)
     ax[1].plot(
         eval_step_vals, smooth_fn(narrow_eval_vals), label="Narrow", linewidth=linewidth
     )
@@ -322,8 +322,8 @@ def plot_narrow_vs_wide_results():
         linewidth=linewidth,
     )
     ax[1].set_xlabel("Iteration", fontsize=14)
-    ax[1].set_ylabel("Pearson Coef", fontsize=14)
-    ax[1].legend()
+    ax[1].set_ylabel("Pearson Corr.", fontsize=14)
+    ax[1].legend(fontsize=14)
     return fig
 
 
@@ -368,3 +368,39 @@ def get_fewshot_stsb_results():
     labels = list(labels)
     series = list(series)
     return series, labels
+
+
+def plot_fewshot_stsb_results():
+    eval_values, sample_sizes = get_fewshot_stsb_results()
+    depth_3_values = [x[0] for x in eval_values]
+    depth_2_values = [x[1] for x in eval_values]
+    depth_3_values = np.array(depth_3_values)
+    depth_2_values = np.array(depth_2_values)
+    fig, ax = plt.subplots()
+    ax.errorbar(
+        sample_sizes,
+        depth_3_values.mean(axis=1),
+        fmt="-o",
+        yerr=depth_3_values.std(axis=1) / 2,
+        linewidth=4,
+        capsize=6,
+        markersize=7,
+        label="Deep Compressed LoRA",
+    )
+    ax.errorbar(
+        sample_sizes,
+        depth_2_values.mean(axis=1),
+        fmt="-o",
+        yerr=depth_2_values.std(axis=1) / 2,
+        linewidth=2,
+        capsize=6,
+        markersize=7,
+        label="Vanilla LoRA",
+    )
+    ax.set_xscale("log")
+    ax.set_xticks([16, 64, 256], labels=["16", "64", "256"], fontsize=14)
+    ax.minorticks_off()
+    ax.set_xlabel("# Training Examples", fontsize=14)
+    ax.set_ylabel("Pearson Correlation", fontsize=14)
+    ax.legend(fontsize=14)
+    return fig
