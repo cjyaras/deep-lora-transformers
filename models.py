@@ -16,7 +16,6 @@ class MatrixFactorization(nn.Module):
     rank: Optional[int]
 
     def setup(self):
-        assert self.depth >= 2, "depth must be at least 2"
         set_rank = self.rank if self.rank else min(self.shape)
         assert set_rank <= min(
             self.shape
@@ -30,32 +29,43 @@ class MatrixFactorization(nn.Module):
             last_init_fn = init_fn
 
         layers = []
-        layers.append(
-            self.param(
-                "w0",
-                init_fn,
-                (set_rank, self.shape[1]),
-            )
-        )
-        for i in range(1, self.depth - 1):
+        if self.depth == 1:
             layers.append(
                 self.param(
-                    f"w{i}",
+                    "w0",
                     init_fn,
-                    (set_rank, set_rank),
+                    (self.shape[0], self.shape[1]),
                 )
             )
-        layers.append(
-            self.param(
-                f"w{self.depth-1}",
-                last_init_fn,
-                (self.shape[0], set_rank),
+        else:
+            layers.append(
+                self.param(
+                    "w0",
+                    init_fn,
+                    (set_rank, self.shape[1]),
+                )
             )
-        )
+            for i in range(1, self.depth - 1):
+                layers.append(
+                    self.param(
+                        f"w{i}",
+                        init_fn,
+                        (set_rank, set_rank),
+                    )
+                )
+            layers.append(
+                self.param(
+                    f"w{self.depth-1}",
+                    last_init_fn,
+                    (self.shape[0], set_rank),
+                )
+            )
         self.layers = layers
 
     def __call__(self):
         x = self.layers[0]
+        if self.depth == 1:
+            return x
         for w in self.layers[1:]:
             x = w @ x
         return x

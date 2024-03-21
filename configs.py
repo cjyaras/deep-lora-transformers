@@ -27,9 +27,10 @@ class TaskConfig:
     # Lora hparams
     lora_adapt_type: LoraAdaptType = LoraAdaptType.only_query_value
     lora_depth: int = 3
-    lora_init_scale: float = 1
+    lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
     lora_compress: bool = False
+    lora_random_factors: bool = False
     lora_gamma: float = 0
 
     # Training hparams

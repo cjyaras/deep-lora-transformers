@@ -139,7 +139,8 @@ def get_subspace_traj(experiment_path: str, rank: int):
         e2e = cast(dict, e2e)
 
         for k, v in e2e.items():
-            U, _, V = utils.svd(v)
+            U, _, VT = np.linalg.svd(v)
+            V = VT.T
             Ur, Vr = U[:, :rank], V[:, :rank]
             subspace_vals_dict[k].append((Ur, Vr))
 
@@ -267,49 +268,70 @@ def plot_fewshot_1024_results():
 
 
 def get_narrow_vs_wide_results():
-    experiment_dir = "experiments/stsb_fewshot_1024_narrow_vs_wide"
+    experiment_dir = "experiments/stsb_fewshot_16_narrow_vs_wide"
     runs = os.listdir(experiment_dir)
-    narrow_run = [x for x in runs if "rank=8" in x][0]
-    wide_run = [x for x in runs if "rank=8" not in x][0]
-    narrow_results = read_results(os.path.join(experiment_dir, narrow_run))
-    wide_results = read_results(os.path.join(experiment_dir, wide_run))
-    train_step_vals, narrow_train_loss_vals = narrow_results["train_loss"]
-    _, wide_train_loss_vals = wide_results["train_loss"]
-    eval_step_vals, narrow_eval_vals = narrow_results[metric_dict["stsb"]]
-    _, wide_eval_vals = wide_results[metric_dict["stsb"]]
+    random_run = [x for x in runs if "rank=8_samples=16" in x][0]
+    compress_run = [x for x in runs if "compress_samples" in x][0]
+    original_run = [x for x in runs if "rank=8" not in x][0]
+    random_results = read_results(os.path.join(experiment_dir, random_run))
+    compress_results = read_results(os.path.join(experiment_dir, compress_run))
+    original_results = read_results(os.path.join(experiment_dir, original_run))
+
+    train_step_vals, random_train_loss_vals = random_results["train_loss"]
+    _, compress_train_loss_vals = compress_results["train_loss"]
+    _, original_train_loss_vals = original_results["train_loss"]
+
+    eval_step_vals, random_eval_vals = random_results[metric_dict["stsb"]]
+    _, compress_eval_vals = compress_results[metric_dict["stsb"]]
+    _, original_eval_vals = original_results[metric_dict["stsb"]]
+
     return (
         train_step_vals,
-        narrow_train_loss_vals,
-        wide_train_loss_vals,
+        random_train_loss_vals,
+        compress_train_loss_vals,
+        original_train_loss_vals,
         eval_step_vals,
-        narrow_eval_vals,
-        wide_eval_vals,
+        random_eval_vals,
+        compress_eval_vals,
+        original_eval_vals,
     )
 
 
 def plot_narrow_vs_wide_results():
     (
         train_step_vals,
-        narrow_train_loss_vals,
-        wide_train_loss_vals,
+        random_train_loss_vals,
+        compress_train_loss_vals,
+        original_train_loss_vals,
         eval_step_vals,
-        narrow_eval_vals,
-        wide_eval_vals,
+        random_eval_vals,
+        compress_eval_vals,
+        original_eval_vals,
     ) = get_narrow_vs_wide_results()
     fig, ax = plt.subplots(ncols=2, figsize=(9, 3))
+
+    random_color = "deeppink"
 
     train_smooth_fn = lambda x: smooth(x, 0.99)
     ax[0].plot(
         train_step_vals,
-        train_smooth_fn(narrow_train_loss_vals),
-        color="g",
-        label="Narrow",
+        train_smooth_fn(original_train_loss_vals),
+        "--",
+        color="green",
+        linewidth=4,
+        label="Original",
     )
     ax[0].plot(
         train_step_vals,
-        train_smooth_fn(wide_train_loss_vals),
+        train_smooth_fn(random_train_loss_vals),
+        color=random_color,
+        label="Random",
+    )
+    ax[0].plot(
+        train_step_vals,
+        train_smooth_fn(compress_train_loss_vals),
         color="b",
-        label="Wide",
+        label="Compressed",
     )
     ax[0].set_xlabel("Iteration", fontsize=14)
     ax[0].set_ylabel("Train Loss", fontsize=14)
@@ -318,15 +340,23 @@ def plot_narrow_vs_wide_results():
     eval_smooth_fn = lambda x: smooth(x, 0.95)
     ax[1].plot(
         eval_step_vals,
-        eval_smooth_fn(narrow_eval_vals),
-        color="g",
-        label="Narrow",
+        eval_smooth_fn(original_eval_vals),
+        "--",
+        color="green",
+        linewidth=4,
+        label="Original",
     )
     ax[1].plot(
         eval_step_vals,
-        eval_smooth_fn(wide_eval_vals),
+        eval_smooth_fn(random_eval_vals),
+        color=random_color,
+        label="Random",
+    )
+    ax[1].plot(
+        eval_step_vals,
+        eval_smooth_fn(compress_eval_vals),
         color="b",
-        label="Wide",
+        label="Compressed",
     )
     ax[1].set_xlabel("Iteration", fontsize=14)
     ax[1].set_ylabel("Pearson Corr.", fontsize=14)
@@ -396,7 +426,7 @@ def plot_fewshot_stsb_results():
         alpha=0.1,
         color="orange",
     )
-    ax.plot(sample_sizes, depth_3_mean, label="Deep Compressed LoRA", color="blue")
+    ax.plot(sample_sizes, depth_3_mean, label="Deep LoRA", color="blue")
     ax.fill_between(
         sample_sizes,
         depth_3_mean - depth_3_std / 2,
@@ -405,11 +435,11 @@ def plot_fewshot_stsb_results():
         color="blue",
     )
     ax.set_xscale("log")
-    ax.set_xticks([16, 64, 256], labels=["16", "64", "256"], fontsize=14)
+    ax.set_xticks(sample_sizes, labels=[int(s) for s in sample_sizes], fontsize=14)
     ax.minorticks_off()
     ax.set_xlabel("# Training Examples", fontsize=14)
     ax.set_ylabel("Pearson Correlation", fontsize=14)
-    ax.legend(fontsize=12)
+    ax.legend(fontsize=16)
     return fig
 
 
@@ -449,5 +479,88 @@ def plot_fewshot_256_ranks():
     sns.histplot(run_3_ranks, ax=ax, color="blue")
     ax.set_xlabel("Rank", fontsize=12)
     ax.set_ylabel("Count", fontsize=12)
-    ax.legend(["Vanilla LoRA", "Deep Compressed LoRA"], fontsize=12)
+    ax.legend(["Vanilla LoRA", "Deep LoRA"], fontsize=16)
+    return fig
+
+
+def get_fewshot_stsb_varying_rank_results():
+    experiment_dir = "experiments/stsb_fewshot_16_varying_rank"
+    ranks = [int(x) for x in os.listdir(experiment_dir)]
+
+    diff_dict = {}
+    take_last = True
+
+    def get_seed(run):
+        return int(run.split("_")[-1].split("=")[1])
+
+    for sample_size in sorted(ranks):
+        runs = [
+            run for run in os.listdir(os.path.join(experiment_dir, str(sample_size)))
+        ]
+        runs_2 = [run for run in runs if "depth=2" in run]
+        runs_3 = [run for run in runs if "depth=3" in run]
+        runs_2_results = np.zeros(len(runs_2))
+        runs_3_results = np.zeros(len(runs_3))
+        for run in runs:
+            seed = get_seed(run)
+            with open(
+                os.path.join(experiment_dir, str(sample_size), run, "results.json")
+            ) as f:
+                results = json.load(f)
+            values = [
+                entry["value"]
+                for entry in sorted(results["eval_pearson"], key=lambda x: x["step"])
+            ]
+            if "depth=2" in run:
+                runs_2_results[seed] = values[-1] if take_last else max(values)
+            elif "depth=3" in run:
+                runs_3_results[seed] = values[-1] if take_last else max(values)
+        diff_dict[sample_size] = (
+            runs_2_results,
+            runs_3_results,
+        )
+
+    ranks, eval_values = list(zip(*diff_dict.items()))
+    ranks = list(ranks)
+    eval_values = list(eval_values)
+    depth_2_values = [x[0] for x in eval_values]
+    depth_3_values = [x[1] for x in eval_values]
+    depth_2_values = np.array(depth_2_values)
+    depth_3_values = np.array(depth_3_values)
+    return ranks, depth_2_values, depth_3_values
+
+
+def plot_fewshot_stsb_varying_rank_results():
+    (
+        ranks,
+        depth_2_values,
+        depth_3_values,
+    ) = get_fewshot_stsb_varying_rank_results()
+    depth_2_mean = depth_2_values.mean(axis=1)
+    depth_2_std = depth_2_values.std(axis=1)
+    depth_3_mean = depth_3_values.mean(axis=1)
+    depth_3_std = depth_3_values.std(axis=1)
+    fig, ax = plt.subplots()
+    ax.plot(ranks, depth_2_mean, label="Vanilla LoRA", color="orange")
+    ax.fill_between(
+        ranks,
+        depth_2_mean - depth_2_std / 2,
+        depth_2_mean + depth_2_std / 2,
+        alpha=0.1,
+        color="orange",
+    )
+    ax.plot(ranks, depth_3_mean, label="Deep LoRA", color="blue")
+    ax.fill_between(
+        ranks,
+        depth_3_mean - depth_3_std / 2,
+        depth_3_mean + depth_3_std / 2,
+        alpha=0.1,
+        color="blue",
+    )
+    ax.set_xscale("log")
+    ax.set_xticks(ranks, labels=[int(s) for s in ranks], fontsize=14)
+    ax.minorticks_off()
+    ax.set_xlabel("Rank $r$", fontsize=14)
+    ax.set_ylabel("Pearson Correlation", fontsize=14)
+    ax.legend(fontsize=16)
     return fig

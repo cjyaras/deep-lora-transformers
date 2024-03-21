@@ -7,8 +7,10 @@ import flax.training.checkpoints
 import flax.training.train_state as train_state
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import transformers
+from tqdm.auto import tqdm
 
 import configs
 import models
@@ -153,21 +155,24 @@ def create_lora_train_state(
     model_params: flax.core.FrozenDict[str, jax.Array],
     learning_rate_fn: optax.Schedule,
     lora_rng: jax.Array,
-) -> LoraTrainState:
+) -> tuple[LoraTrainState, models.LoRA]:
     lora_model = models.create_lora_model_from_config(task_config, model_params)
     lora_variables = lora_model.init(lora_rng)
     lora_params = lora_variables["params"]
     tx = create_optimizer(learning_rate_fn, task_config.weight_decay)
-    return LoraTrainState.create(
-        apply_fn=partial(lora_model.apply, method=lora_model.adapt),
-        params=lora_params,
-        tx=tx,
+    return (
+        LoraTrainState.create(
+            apply_fn=partial(lora_model.apply, method=lora_model.adapt),
+            params=lora_params,
+            tx=tx,
+        ),
+        lora_model,
     )
 
 
-# TODO: Move things to numpy (CPU) to reduce GPU memory consumption.
 def create_compressed_lora_train_state(
     uncompressed_lora_state: LoraTrainState,
+    uncompressed_lora_model: models.LoRA,
     model_state: ModelState,
     batch: dict,
     dropout_rng: jax.Array,
@@ -175,6 +180,8 @@ def create_compressed_lora_train_state(
 ):
     assert task_config.lora_compress, "Lora compression is not enabled."
     rank = task_config.lora_rank
+    assert rank is not None, "Rank must be specified."
+    assert rank % 2 == 0, "Rank must be even."
     compressed_lora_model = models.LoRA(
         flat_params_shape_dict=utils.get_filtered_flat_params_shape_dict(
             model_state.params, task_config
@@ -185,22 +192,61 @@ def create_compressed_lora_train_state(
         compressed=True,
     )
 
+    uncompressed_e2e = uncompressed_lora_model.apply(
+        {"params": uncompressed_lora_state.params}
+    )
+
     # Get gradient of uncompressed factors
     value_grad_fn = get_grad_fn(model_state, uncompressed_lora_state)
-    _, grads = value_grad_fn(uncompressed_lora_state.params, batch, dropout_rng)
+    _, uncompressed_grads = value_grad_fn(
+        uncompressed_lora_state.params, batch, dropout_rng
+    )
 
-    compressed_lora_params = {}
-    for k, g in grads.items():
+    # move to numpy
+    uncompressed_lora_params_numpy = jax.tree_map(
+        np.array, uncompressed_lora_state.params
+    )
+    uncompressed_grads_numpy = jax.tree_map(np.array, uncompressed_grads)
+    uncompressed_e2e_numpy = jax.tree_map(np.array, uncompressed_e2e)
+
+    def get_left_right_factors(w0, g_w0, e2e):
+        half_rank = rank // 2
+        v1 = jnp.linalg.svd(g_w0, full_matrices=False)[2].T[:, :half_rank]
+        v2 = jnp.linalg.svd(g_w0.T @ w0, full_matrices=False)[2].T[:, :half_rank]
+        rightT = jnp.linalg.svd(np.concatenate([v1, v2], axis=1), full_matrices=False)[
+            0
+        ]
+        left = e2e @ rightT / (task_config.lora_init_scale**task_config.lora_depth)
+        return left, rightT
+
+    compressed_lora_params_numpy = {}
+
+    print("Compressing LoRA parameters...")
+    for k, g in tqdm(uncompressed_grads_numpy.items()):
         comp_mf_params = {}
-        U, _, _ = jnp.linalg.svd(g[f"w{task_config.lora_depth-1}"])
-        comp_mf_params["left"] = U[:, :rank]
-        _, _, VT = jnp.linalg.svd(g["w0"])
-        comp_mf_params["right"] = VT[:rank, :]
+        if not task_config.lora_random_factors:
+            left, rightT = get_left_right_factors(
+                uncompressed_lora_params_numpy[k]["w0"],
+                g["w0"],
+                uncompressed_e2e_numpy[k],
+            )
+            comp_mf_params["left"] = left
+            comp_mf_params["right"] = rightT.T
+        else:
+            m, n = uncompressed_e2e_numpy[k].shape
+            left = np.random.randn(m, rank)
+            left /= np.linalg.norm(left, axis=0, keepdims=True)
+            right = np.random.randn(rank, n)
+            right /= np.linalg.norm(right, axis=1, keepdims=True)
+            comp_mf_params["left"] = left
+            comp_mf_params["right"] = right
         mf_params = {}
         for w in g.keys():
             mf_params[w] = task_config.lora_init_scale * jnp.eye(rank)
         comp_mf_params["mf"] = mf_params
-        compressed_lora_params[k] = comp_mf_params
+        compressed_lora_params_numpy[k] = comp_mf_params
+
+    compressed_lora_params = jax.tree_map(jnp.array, compressed_lora_params_numpy)
 
     inner_tx = uncompressed_lora_state.tx
     outer_tx = create_optimizer(

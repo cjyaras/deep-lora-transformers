@@ -4,17 +4,16 @@ import os
 import shutil
 from re import I
 
+import configs
+import data
 import evaluate
 import flax
 import flax.metrics.tensorboard
 import jax
-import tqdm.auto as tqdm_lib
-import transformers
-
-import configs
-import data
 import models
+import tqdm.auto as tqdm_lib
 import train
+import transformers
 import utils
 
 experiment_dir = os.path.join(os.getcwd(), "experiments")
@@ -56,7 +55,10 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         rng = jax.random.PRNGKey(seed)
 
         lora_rng, rng = jax.random.split(rng)
-        uncompressed_lora_state = train.create_lora_train_state(
+        (
+            uncompressed_lora_state,
+            uncompressed_lora_model,
+        ) = train.create_lora_train_state(
             task_config,
             pretrain_model.params,  # type: ignore
             learning_rate_fn=learning_rate_fn,
@@ -82,16 +84,28 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         if task_config.lora_compress:
             batch = next(train_iterator)
             lora_state = train.create_compressed_lora_train_state(
-                uncompressed_lora_state, model_state, batch, dropout_rng, task_config
+                uncompressed_lora_state,
+                uncompressed_lora_model,
+                model_state,
+                batch,
+                dropout_rng,
+                task_config,
             )
             del uncompressed_lora_state
             train_iterator = data.create_train_iterator(
                 input_rng, train_dataset, task_config.train_batch_size
             )
-            print(flax.traverse_util.flatten_dict(lora_state.params, sep="/").keys())
         else:
             lora_state = uncompressed_lora_state
 
+        print(
+            "Number of trainable parameters: ",
+            sum(
+                jax.tree_util.tree_map(
+                    jax.numpy.size, jax.tree_util.tree_leaves(lora_state.params)
+                )
+            ),
+        )
         train_metrics = []
         tqdm_train_iterator = tqdm_lib.tqdm(
             train_iterator, total=task_config.num_train_steps

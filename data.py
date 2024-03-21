@@ -1,14 +1,13 @@
 import math
 from typing import Any, Iterator, Optional, Tuple, cast
 
+import configs
 import datasets
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import transformers
-
-import configs
 
 # Glue tasks
 task_to_keys = {
