@@ -1,14 +1,49 @@
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
+from typing import Optional, Tuple, Union
 
 from dataclasses_json import dataclass_json
 
 
-class LoraAdaptType(str, Enum):
-    only_query_value = "only-query-value"
-    attention_mlp = "attention-mlp"
-    all_dense = "all-dense"
+class ModelType(StrEnum):
+    BERT = "bert-base-cased"
+    BART = "facebook/bart-base"
+
+
+class TaskType(StrEnum):
+    GLUE = "glue"
+    SUMMARIZATION = "summarization"
+
+
+class LoraAdaptType(StrEnum):
+    ONLY_QUERY_VALUE = "only-query-value"
+    ATTENTION_MLP = "attention-mlp"
+    ALL_DENSE = "all-dense"
+
+
+class GlueTaskName(StrEnum):
+    COLA = "cola"
+    MNLI = "mnli"
+    MRPC = "mrpc"
+    QNLI = "qnli"
+    QQP = "qqp"
+    RTE = "rte"
+    SST2 = "sst2"
+    STSB = "stsb"
+
+
+class SummarizationTaskName(StrEnum):
+    AMAZON_REVIEWS_MULTI = "amazon_reviews_multi"
+    BIG_PATENT = "big_patent"
+    CNN_DAILYMAIL = "cnn_dailymail"
+    ORANGE_SUM = "orange_sum"
+    PN_SUMMARY = "pn_summary"
+    PSC = "psc"
+    SAMSUM = "samsum"
+    THAISUM = "thaisum"
+    XGLUE = "xglue"
+    XSUM = "xsum"
+    WIKI_SUMMARY = "wiki_summary"
 
 
 @dataclass_json
@@ -17,15 +52,16 @@ class TaskConfig:
     identifier: Optional[str] = None
 
     # Data hparams
-    finetune_task_name: str = "stsb"
-    max_seq_length: Optional[int] = None
+    task_type: TaskType = TaskType.GLUE
+    finetune_task_name: Union[GlueTaskName, SummarizationTaskName] = GlueTaskName.STSB
+    max_seq_length: Union[int, Tuple[int, int]] = 128
     num_train_samples: Optional[int] = None
 
     # Model hparams
-    pretrain_model: str = "bert-base-cased"
+    pretrain_model: ModelType = ModelType.BERT
 
     # Lora hparams
-    lora_adapt_type: LoraAdaptType = LoraAdaptType.only_query_value
+    lora_adapt_type: LoraAdaptType = LoraAdaptType.ONLY_QUERY_VALUE
     lora_depth: int = 3
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
@@ -46,3 +82,15 @@ class TaskConfig:
     log_eval_steps: int = 200
     save_step_points: list = field(default_factory=list)
     save_dir: str = "experiments"
+
+    def __post_init__(self):
+        if self.task_type == TaskType.GLUE:
+            assert isinstance(self.finetune_task_name, GlueTaskName)
+            assert self.pretrain_model == ModelType.BERT
+            assert isinstance(self.max_seq_length, int)
+        elif self.task_type == TaskType.SUMMARIZATION:
+            assert isinstance(self.finetune_task_name, SummarizationTaskName)
+            assert self.pretrain_model == ModelType.BART
+            assert isinstance(self.max_seq_length, Tuple)
+        else:
+            raise ValueError(f"Invalid task_type: {self.task_type}")

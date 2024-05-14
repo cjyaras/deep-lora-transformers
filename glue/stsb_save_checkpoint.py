@@ -1,5 +1,3 @@
-import numpy as np
-
 import configs
 from finetune import finetune
 
@@ -18,9 +16,10 @@ def run_experiments(num_samples, depth, rank, learning_rate, seeds):
     task_config = common_config()
     task_config.num_train_samples = num_samples
     task_config.num_train_steps = 500
+    task_config.save_step_points = [500]
     task_config.log_eval_steps = task_config.num_train_steps
     task_config.finetune_task_name = "stsb"
-    task_config.save_dir = f"experiments/stsb_fewshot/{num_samples}"
+    task_config.save_dir = f"experiments_2/stsb_256_checkpoints"
     task_config.lora_depth = depth
     task_config.lora_rank = rank
     task_config.learning_rate = learning_rate
@@ -29,12 +28,10 @@ def run_experiments(num_samples, depth, rank, learning_rate, seeds):
 
 
 def main():
-    seeds = np.arange(20)
-    for num_samples in [16, 64, 256]:
-        run_experiments(num_samples, depth=2, rank=8, learning_rate=1e-4, seeds=seeds)
-        run_experiments(
-            num_samples, depth=3, rank=None, learning_rate=1e-4, seeds=seeds
-        )
+    seeds = [0]
+    num_samples = 256
+    run_experiments(num_samples, depth=2, rank=8, learning_rate=1e-4, seeds=seeds)
+    run_experiments(num_samples, depth=3, rank=None, learning_rate=1e-4, seeds=seeds)
 
 
 if __name__ == "__main__":

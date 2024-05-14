@@ -1,28 +1,16 @@
 import os
 
-import chex
+import configs
 import flax
+import flax.core
+import flax.struct
 import flax.training.checkpoints
 import flax.traverse_util
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-import configs
-
-
-def shift_tokens_right(
-    input_ids: np.ndarray, pad_token_id: int, decoder_start_token_id: int
-):
-    "Shift input ids one token to the right."
-    shifted_input_ids = np.zeros_like(input_ids)
-    shifted_input_ids[:, 1:] = input_ids[:, :-1]
-    shifted_input_ids[:, 0] = decoder_start_token_id
-
-    # replace possible -100 values in labels by `pad_token_id`
-    shifted_input_ids[shifted_input_ids == -100] = pad_token_id
-
-    return shifted_input_ids
+# Misc functions
 
 
 def cosine_angle(U, V):
@@ -30,8 +18,7 @@ def cosine_angle(U, V):
     return np.linalg.norm(np.linalg.svd(U.T @ V, compute_uv=False), ord=np.inf)  # type: ignore
 
 
-def pad_to_batch_size(batch: dict[str, np.ndarray], target_batch_size: int):
-    "Pads batch input to target batch size, also returns original length label."
+def pad_to_batch_size(batch, target_batch_size):
     labels = batch.pop("labels")
     padded_batch = jax.tree_util.tree_map(
         lambda x: np.pad(
@@ -42,20 +29,15 @@ def pad_to_batch_size(batch: dict[str, np.ndarray], target_batch_size: int):
     return padded_batch, labels
 
 
-# TODO: Need to do generic name check for parameters (e.g. "kernel" in name) for BERT/BART
-
-
-def get_filtered_flat_params_shape_dict(
-    model_params: chex.ArrayTree, lora_adapt_type: configs.LoraAdaptType
-):
+def get_filtered_flat_params_shape_dict(model_params, task_config):
     flat_params = flax.traverse_util.flatten_dict(model_params, sep="/")
     flat_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_params)
-    if lora_adapt_type == configs.LoraAdaptType.ONLY_QUERY_VALUE:
+    if task_config.lora_adapt_type == configs.LoraAdaptType.only_query_value:
         filter_fn = (
             lambda flat_path, _: "query/kernel" in flat_path
             or "value/kernel" in flat_path
         )
-    elif lora_adapt_type == configs.LoraAdaptType.ATTENTION_MLP:
+    elif task_config.lora_adapt_type == configs.LoraAdaptType.attention_mlp:
         filter_fn = (
             lambda flat_path, _: "query/kernel" in flat_path
             or "key/kernel" in flat_path
@@ -96,7 +78,9 @@ def write_eval_metric(summary_writer, result_dict, eval_metrics, step):
         summary_writer.scalar(f"eval_{metric_name}", value, step)
 
 
-def save_lora_params(experiment_path: str, step: int, lora_params: chex.ArrayTree):
+def save_lora_params(
+    experiment_path: str, step: int, lora_params: flax.core.FrozenDict[str, jax.Array]
+):
     flax.training.checkpoints.save_checkpoint(
         ckpt_dir=os.path.join(
             experiment_path,

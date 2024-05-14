@@ -2,7 +2,6 @@ import json
 import math
 import os
 import shutil
-from re import I
 
 import configs
 import data
@@ -26,7 +25,8 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
 
     # Model
     pretrain_model = models.create_pretrain_model_from_config(
-        task_config, num_labels=data.task_to_num_labels[task_config.finetune_task_name]
+        task_config,
+        num_labels=data.task_to_num_labels[task_config.finetune_task_name],
     )
 
     learning_rate_fn = train.create_learning_rate_fn(
@@ -37,11 +37,6 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
     )
 
     train_step, eval_step = train.create_train_eval_step_fns(learning_rate_fn)
-
-    model_state = train.create_model_state(
-        model=pretrain_model,
-        is_regression=is_regression,
-    )
 
     eval_metric = evaluate.load("glue", task_config.finetune_task_name)
 
@@ -80,6 +75,10 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
             input_rng, train_dataset, task_config.train_batch_size
         )
 
+        model_state = train.create_model_state(
+            model=pretrain_model, is_regression=is_regression, dropout_rng=dropout_rng
+        )
+
         # Compression
         if task_config.lora_compress:
             batch = next(train_iterator)
@@ -88,7 +87,6 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
                 uncompressed_lora_model,
                 model_state,
                 batch,
-                dropout_rng,
                 task_config,
             )
             del uncompressed_lora_state

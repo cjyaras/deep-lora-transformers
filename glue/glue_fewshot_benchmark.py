@@ -1,7 +1,6 @@
-import numpy as np
-
 import configs
 import data
+import numpy as np
 from finetune import finetune
 
 

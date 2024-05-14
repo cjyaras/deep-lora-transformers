@@ -1,7 +1,6 @@
 import math
 from typing import Any, Iterator, Optional, Tuple, cast
 
-import configs
 import datasets
 import jax
 import jax.numpy as jnp
@@ -9,8 +8,13 @@ import jax.random as jr
 import numpy as np
 import transformers
 
+import configs
+import utils
+
+Dataset = datasets.arrow_dataset.Dataset
+
 # Glue tasks
-task_to_keys = {
+glue_task_to_keys = {
     "cola": ("sentence", None),
     "mnli": ("premise", "hypothesis"),
     "mrpc": ("sentence1", "sentence2"),
@@ -21,7 +25,7 @@ task_to_keys = {
     "stsb": ("sentence1", "sentence2"),
 }
 
-task_to_num_labels = {
+glue_task_to_num_labels = {
     "cola": 2,
     "mnli": 3,
     "mrpc": 2,
@@ -32,28 +36,68 @@ task_to_num_labels = {
     "stsb": 1,
 }
 
+BART_PAD_TOKEN_ID = 1
+BART_DECODER_START_TOKEN_ID = 2
+
+# Summarization tasks
+summarization_task_to_keys = {
+    "amazon_reviews_multi": ("review_body", "review_title"),
+    "big_patent": ("description", "abstract"),
+    "cnn_dailymail": ("article", "highlights"),
+    "orange_sum": ("text", "summary"),
+    "pn_summary": ("article", "summary"),
+    "psc": ("extract_text", "summary_text"),
+    "samsum": ("dialogue", "summary"),
+    "thaisum": ("body", "summary"),
+    "xglue": ("news_body", "news_title"),
+    "xsum": ("document", "summary"),
+    "wiki_summary": ("article", "highlights"),
+}
+
 
 def load_dataset_from_config(
-    task_config: configs.TaskConfig, seed: int
-) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset]:
+    task_config: configs.TaskConfig, sample_seed: int
+) -> Tuple[
+    Dataset,
+    Dataset,
+    Optional[Dataset],
+]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
-    train_dataset, eval_dataset = load_dataset(
-        task_config.finetune_task_name,
-        tokenizer,
-        task_config.max_seq_length,
-        task_config.num_train_samples,
-        seed,
-    )
-    return train_dataset, eval_dataset
+
+    if task_config.task_type == configs.TaskType.GLUE:
+        assert isinstance(task_config.finetune_task_name, configs.GlueTaskName)
+        assert isinstance(task_config.max_seq_length, int)
+        train_dataset, eval_dataset = load_glue_dataset(
+            task_config.finetune_task_name,
+            tokenizer,
+            task_config.max_seq_length,
+            task_config.num_train_samples,
+            sample_seed,
+        )
+        predict_dataset = None
+    elif task_config.task_type == configs.TaskType.SUMMARIZATION:
+        assert isinstance(task_config.finetune_task_name, configs.SummarizationTaskName)
+        assert isinstance(task_config.max_seq_length, Tuple)
+        train_dataset, eval_dataset, predict_dataset = load_summarization_dataset(
+            task_config.finetune_task_name,
+            tokenizer,
+            task_config.max_seq_length,
+            task_config.num_train_samples,
+            sample_seed,
+        )
+    else:
+        raise ValueError(f"Task type {task_config.task_type} not supported.")
+    return train_dataset, eval_dataset, predict_dataset
 
 
-def load_dataset(
-    finetune_task_name: str,
+def load_glue_dataset(
+    finetune_task_name: configs.GlueTaskName,
     tokenizer: transformers.PreTrainedTokenizerBase,
     max_seq_length: Optional[int],
     num_train_samples: Optional[int],
     sample_seed: int,
-) -> Tuple[datasets.arrow_dataset.Dataset, datasets.arrow_dataset.Dataset]:
+) -> Tuple[Dataset, Dataset]:
+
     raw_datasets = datasets.load_dataset("glue", finetune_task_name)
 
     def length_of(example):
@@ -65,7 +109,7 @@ def load_dataset(
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
-    sentence1_key, sentence2_key = task_to_keys[finetune_task_name]
+    sentence1_key, sentence2_key = glue_task_to_keys[finetune_task_name]
 
     if max_seq_length is not None:
         for k, v in raw_datasets.items():  # type: ignore
@@ -74,7 +118,7 @@ def load_dataset(
     if num_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore
             jr.choice(
-                jax.random.PRNGKey(sample_seed),
+                jax.random.key(sample_seed),
                 jnp.arange(len(raw_datasets["train"])),  # type: ignore
                 shape=(num_train_samples,),
             )
@@ -87,7 +131,11 @@ def load_dataset(
             else (example[sentence1_key], example[sentence2_key])
         )
         result = tokenizer(
-            *texts, padding="max_length", max_length=max_seq_length, truncation=True
+            *texts,
+            padding="max_length",
+            max_length=max_seq_length,
+            truncation=True,
+            return_tensors="np",
         )
         result["labels"] = example["label"]
         return result
@@ -105,6 +153,97 @@ def load_dataset(
     return train_dataset, eval_dataset
 
 
+def load_summarization_dataset(
+    finetune_task_name: configs.SummarizationTaskName,
+    tokenizer: transformers.PreTrainedTokenizerBase,
+    max_seq_length: Optional[Tuple[int, int]],
+    num_train_samples: Optional[int],
+    sample_seed: int,
+) -> Tuple[Dataset, Dataset, Dataset]:
+
+    raw_datasets = datasets.load_dataset(finetune_task_name)
+
+    text_key, summary_key = summarization_task_to_keys[finetune_task_name]
+
+    def length_of(example):
+        text, summary = example[text_key], example[summary_key]
+        return len(tokenizer(text)["input_ids"]), len(tokenizer(summary)["input_ids"])  # type: ignore
+
+    if max_seq_length is None:
+        max_source_length = 1024
+        max_target_length = 128
+    else:
+        max_source_length, max_target_length = max_seq_length
+
+    def keep_fn(example):
+        text_length, summary_length = length_of(example)
+        return text_length <= max_source_length and summary_length <= max_target_length
+
+    for k, v in raw_datasets.items():  # type: ignore
+        raw_datasets[k] = v.filter(keep_fn)  # type: ignore
+
+    if num_train_samples is not None:
+        raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore
+            jr.choice(
+                jax.random.key(sample_seed),
+                jnp.arange(len(raw_datasets["train"])),  # type: ignore
+                shape=(num_train_samples,),
+            )
+        )
+
+    def preprocess_fn(example):
+        inputs = example[text_key]
+        targets = example[summary_key]
+
+        model_inputs = tokenizer(
+            inputs,
+            max_length=max_source_length,
+            truncation=True,
+            padding="max_length",
+            return_tensors="np",
+        )
+
+        labels = tokenizer(
+            targets,
+            max_length=max_target_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="np",
+        )
+
+        model_inputs["labels"] = labels["input_ids"]
+        decoder_input_ids = utils.shift_tokens_right(
+            labels["input_ids"],  # type: ignore
+            BART_PAD_TOKEN_ID,
+            BART_DECODER_START_TOKEN_ID,
+        )
+        model_inputs["decoder_input_ids"] = decoder_input_ids
+        model_inputs["decoder_attention_mask"] = labels["attention_mask"]
+
+        return model_inputs
+
+    processed_datasets = raw_datasets.map(
+        preprocess_fn,
+        batched=True,
+        remove_columns=raw_datasets["train"].column_names,  # type: ignore
+    )
+
+    train_dataset = cast(
+        datasets.arrow_dataset.Dataset,
+        processed_datasets["train"],  # type: ignore
+    )
+    eval_dataset = cast(
+        datasets.arrow_dataset.Dataset,
+        processed_datasets["validation"],  # type: ignore
+    )
+    predict_dataset = cast(
+        datasets.arrow_dataset.Dataset,
+        processed_datasets["test"],  # type: ignore
+    )
+
+    return train_dataset, eval_dataset, predict_dataset
+
+
 def create_train_iterator(
     rng: jax.Array, dataset: datasets.arrow_dataset.Dataset, batch_size: int
 ) -> Iterator[dict[Any, np.ndarray]]:
@@ -112,7 +251,6 @@ def create_train_iterator(
     if len(dataset) == batch_size:
         # If dataset size is equal to batch size, then we can just return the dataset as a batch.
         batch = dataset[:]
-        batch = {k: np.array(v) for k, v in batch.items()}
 
         while True:
             yield batch
@@ -126,7 +264,6 @@ def create_train_iterator(
 
             for perm in perms:
                 batch = dataset[perm]
-                batch = {k: np.array(v) for k, v in batch.items()}
 
                 yield batch
 
@@ -141,6 +278,5 @@ def create_eval_iterator(
 
     for idx in batch_idx:
         batch = dataset[idx]
-        batch = {k: np.array(v) for k, v in batch.items()}
 
         yield batch

@@ -1,20 +1,21 @@
 from functools import partial
 from typing import Callable, Tuple
 
+import configs
 import flax
+import flax.core
 import flax.struct
 import flax.training.checkpoints
 import flax.training.train_state as train_state
+import flax.traverse_util
 import jax
 import jax.numpy as jnp
+import models
 import numpy as np
 import optax
 import transformers
-from tqdm.auto import tqdm
-
-import configs
-import models
 import utils
+from tqdm.auto import tqdm
 
 LoraTrainState = train_state.TrainState
 
@@ -51,7 +52,7 @@ def create_optimizer(learning_rate_fn: optax.Schedule, weight_decay: float):
 
 
 def get_grad_fn(model_state, lora_state):
-    def loss_fn(lora_params, batch, dropout_rng):
+    def loss_fn(lora_params, batch):
         targets = batch.pop("labels")
         adapted_model_params = lora_state.apply_fn(
             {"params": lora_params}, model_state.params
@@ -59,7 +60,7 @@ def get_grad_fn(model_state, lora_state):
         logits = model_state.apply_fn(
             **batch,
             params=adapted_model_params,
-            dropout_rng=dropout_rng,
+            dropout_rng=model_state.dropout_rng,
             train=True,
         )[0]
         loss = model_state.loss_fn(logits, targets)
@@ -76,14 +77,15 @@ def create_train_eval_step_fns(
         model_state: ModelState,
         lora_state: LoraTrainState,
         batch: dict[str, jax.Array],
-        dropout_rng: jax.Array,
     ):
+        dropout_rng = model_state.dropout_rng
         dropout_rng, new_dropout_rng = jax.random.split(dropout_rng)
         grad_fn = get_grad_fn(model_state, lora_state)
         loss, grads = grad_fn(lora_state.params, batch, dropout_rng)
         new_lora_state = lora_state.apply_gradients(grads=grads)
+        new_lora_state.replace(dropout_rng=new_dropout_rng)
         metrics = {"loss": loss, "learning_rate": learning_rate_fn(lora_state.step)}
-        return new_lora_state, metrics, new_dropout_rng
+        return new_lora_state, metrics
 
     @jax.jit
     def eval_step(
@@ -103,16 +105,7 @@ def create_train_eval_step_fns(
 
 
 class ModelState(train_state.TrainState):
-    """Train state with an Optax optimizer.
-
-    Logit and loss functions differ depending on whether the task is classification
-    or regression.
-
-    Args:
-      logits_fn: Applied to last layer to obtain the logits.
-      loss_fn: Function to compute the loss.
-    """
-
+    dropout_rng: jax.Array = flax.struct.field(pytree_node=True)
     logits_fn: Callable = flax.struct.field(pytree_node=False)
     loss_fn: Callable = flax.struct.field(pytree_node=False)
 
@@ -120,6 +113,7 @@ class ModelState(train_state.TrainState):
 def create_model_state(
     model: transformers.FlaxAutoModelForSequenceClassification,
     is_regression: bool,
+    dropout_rng: jax.Array,
 ) -> ModelState:
     """Create (frozen) model state."""
     if is_regression:
@@ -133,6 +127,7 @@ def create_model_state(
             tx=optax.set_to_zero(),
             logits_fn=lambda logits: logits[..., 0],
             loss_fn=mse_loss,
+            dropout_rng=dropout_rng,
         )
 
     else:  # Classification.
@@ -147,6 +142,7 @@ def create_model_state(
             tx=optax.set_to_zero(),
             logits_fn=lambda logits: logits.argmax(-1),
             loss_fn=cross_entropy_loss,
+            dropout_rng=dropout_rng,
         )
 
 
@@ -175,7 +171,6 @@ def create_compressed_lora_train_state(
     uncompressed_lora_model: models.LoRA,
     model_state: ModelState,
     batch: dict,
-    dropout_rng: jax.Array,
     task_config: configs.TaskConfig,
 ):
     assert task_config.lora_compress, "Lora compression is not enabled."
@@ -198,9 +193,7 @@ def create_compressed_lora_train_state(
 
     # Get gradient of uncompressed factors
     value_grad_fn = get_grad_fn(model_state, uncompressed_lora_state)
-    _, uncompressed_grads = value_grad_fn(
-        uncompressed_lora_state.params, batch, dropout_rng
-    )
+    _, uncompressed_grads = value_grad_fn(uncompressed_lora_state.params, batch)
 
     # move to numpy
     uncompressed_lora_params_numpy = jax.tree_map(

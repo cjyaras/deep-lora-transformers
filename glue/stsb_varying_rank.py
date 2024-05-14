@@ -29,8 +29,7 @@ def run_experiments(rank, depth, seeds, learning_rate):
 
 def main():
     seeds = range(5)
-    # for rank in [8, 16, 32, 64]:
-    for rank in [1]:
+    for rank in [8, 16, 32, 64]:
         run_experiments(
             rank=rank,
             depth=2,
