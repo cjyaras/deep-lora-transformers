@@ -22,13 +22,8 @@ experiment_dir = os.path.join(os.getcwd(), "experiments")
 def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
     assert len(seeds) >= 1, "Need at least one seed"
 
-    is_regression = task_config.finetune_task_name == "stsb"
-
     # Model
-    pretrain_model = models.create_pretrain_model_from_config(
-        task_config,
-        num_labels=data.task_to_num_labels[task_config.finetune_task_name],
-    )
+    pretrain_model = models.create_pretrain_model_from_config(task_config)
 
     learning_rate_fn = train.create_learning_rate_fn(
         task_config.num_train_steps,

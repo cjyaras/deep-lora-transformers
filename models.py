@@ -1,14 +1,20 @@
 from typing import Optional, Tuple
 
 import flax
-import flax.core
 import flax.linen as nn
 import flax.traverse_util
-import jax
-import transformers
+import jax.numpy as jnp
+from chex import ArrayTree
+from transformers import (
+    AutoConfig,
+    FlaxAutoModel,
+    FlaxAutoModelForSeq2SeqLM,
+    FlaxAutoModelForSequenceClassification,
+)
 
-import configs
 import misc_utils
+import model_utils
+from configs import ModelType, TaskConfig
 
 
 class MatrixFactorization(nn.Module):
@@ -18,10 +24,9 @@ class MatrixFactorization(nn.Module):
     rank: Optional[int]
 
     def setup(self):
-        set_rank = self.rank if self.rank else min(self.shape)
-        assert set_rank <= min(
-            self.shape
-        ), f"rank {set_rank} must be smaller than outer dimensions {self.shape}"
+        assert self.depth >= 2, "Depth must be at least 2"
+        set_width = self.rank if self.rank else min(self.shape)
+        misc_utils.check_rank(set_width, self.shape)
 
         if self.depth == 2:
             init_fn = nn.initializers.normal(stddev=1)
@@ -31,43 +36,32 @@ class MatrixFactorization(nn.Module):
             last_init_fn = init_fn
 
         layers = []
-        if self.depth == 1:
+        layers.append(
+            self.param(
+                "w1",
+                init_fn,
+                (set_width, self.shape[1]),
+            )
+        )
+        for i in range(2, self.depth):
             layers.append(
                 self.param(
-                    "w0",
+                    f"w{i}",
                     init_fn,
-                    (self.shape[0], self.shape[1]),
+                    (set_width, set_width),
                 )
             )
-        else:
-            layers.append(
-                self.param(
-                    "w0",
-                    init_fn,
-                    (set_rank, self.shape[1]),
-                )
+        layers.append(
+            self.param(
+                f"w{self.depth}",
+                last_init_fn,
+                (self.shape[0], set_width),
             )
-            for i in range(1, self.depth - 1):
-                layers.append(
-                    self.param(
-                        f"w{i}",
-                        init_fn,
-                        (set_rank, set_rank),
-                    )
-                )
-            layers.append(
-                self.param(
-                    f"w{self.depth-1}",
-                    last_init_fn,
-                    (self.shape[0], set_rank),
-                )
-            )
+        )
         self.layers = layers
 
     def __call__(self):
         x = self.layers[0]
-        if self.depth == 1:
-            return x
         for w in self.layers[1:]:
             x = w @ x
         return x
@@ -91,10 +85,10 @@ class CompressedMatrixFactorization(nn.Module):
         )
 
     def __call__(self):
-        return self.left_factor @ self.mf() @ self.right_factor
+        return jnp.linalg.multi_dot([self.left_factor, self.mf(), self.right_factor])
 
 
-class LoRA(nn.Module):
+class Lora(nn.Module):
     flat_params_shape_dict: dict
     init_scale: float
     depth: int
@@ -102,7 +96,7 @@ class LoRA(nn.Module):
     compressed: bool
 
     def setup(self):
-        dmfs = {}
+        mfs = {}
         for flat_param_path, shape in self.flat_params_shape_dict.items():
             if self.compressed:
                 assert (
@@ -123,13 +117,13 @@ class LoRA(nn.Module):
                     rank=self.rank,
                     name=flat_param_path,
                 )
-            dmfs[flat_param_path] = mf
-        self.dmfs = dmfs
+            mfs[flat_param_path] = mf
+        self.mfs = mfs
 
     def __call__(self):
         return {k: v() for k, v in self.dmfs.items()}
 
-    def adapt(self, model_params):
+    def adapt(self, model_params: ArrayTree) -> ArrayTree:
         updates = self()
 
         def f(k, v):
@@ -141,33 +135,54 @@ class LoRA(nn.Module):
 
         return flax.traverse_util.path_aware_map(
             f,
-            model_params,
+            model_params,  # type: ignore
         )
 
 
+GLUE_TASK_TO_NUM_LABELS = {
+    "cola": 2,
+    "mnli": 3,
+    "mrpc": 2,
+    "qnli": 2,
+    "qqp": 2,
+    "rte": 2,
+    "sst2": 2,
+    "stsb": 1,
+}
+
+
 def create_pretrain_model_from_config(
-    task_config: configs.TaskConfig, num_labels: int
-) -> transformers.FlaxAutoModelForSequenceClassification:
-    # Model
-    config = transformers.AutoConfig.from_pretrained(
+    task_config: TaskConfig,
+) -> FlaxAutoModel:
+    "Creates transformer model from task config."
+
+    config = AutoConfig.from_pretrained(
         task_config.pretrain_model,
-        num_labels=num_labels,
-        finetuning_task=task_config.finetune_task_name,
+        num_labels=GLUE_TASK_TO_NUM_LABELS.get(task_config.finetune_task_name),
     )
-    model = transformers.FlaxAutoModelForSequenceClassification.from_pretrained(
-        task_config.pretrain_model, config=config
-    )
+
+    model = (
+        FlaxAutoModelForSequenceClassification
+        if task_config.pretrain_model == ModelType.BERT
+        else FlaxAutoModelForSeq2SeqLM
+    ).from_pretrained(task_config.pretrain_model, config=config)
+
     return model
 
 
 def create_lora_model_from_config(
-    task_config: configs.TaskConfig, model_params: flax.core.FrozenDict[str, jax.Array]
-) -> LoRA:
+    task_config: TaskConfig, model_params: ArrayTree
+) -> Lora:
+    "Creates LoRA model from task config and pretrain model parameters."
+
     filtered_flat_model_params_shape_dict = (
-        misc_utils.get_filtered_flat_params_shape_dict(model_params, task_config)
+        model_utils.get_filtered_flat_params_shape_dict(
+            model_params,
+            task_config.lora_adapt_type,
+        )
     )
 
-    lora_model = LoRA(
+    lora_model = Lora(
         flat_params_shape_dict=filtered_flat_model_params_shape_dict,  # type: ignore
         depth=task_config.lora_depth,
         init_scale=task_config.lora_init_scale,

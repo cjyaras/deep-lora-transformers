@@ -1,24 +1,27 @@
 from functools import partial
 from typing import Callable, Tuple
 
-import flax
-import flax.core
-import flax.struct
-import flax.training.checkpoints
-import flax.training.train_state as train_state
 import flax.traverse_util
 import jax
 import jax.numpy as jnp
-import models
 import numpy as np
 import optax
-import transformers
+from chex import ArrayTree
+from flax.training.train_state import TrainState
+from jax import Array
+from optax import GradientTransformation, Schedule
 from tqdm.auto import tqdm
+from transformers import (
+    FlaxAutoModel,
+    FlaxBartForConditionalGeneration,
+    GenerationConfig,
+)
 
-import configs
-import misc_utils
-
-LoraTrainState = train_state.TrainState
+import metrics
+import model_utils
+import models
+from configs import TaskConfig, TaskType
+from models import Lora
 
 
 def create_learning_rate_fn(
@@ -26,7 +29,7 @@ def create_learning_rate_fn(
     num_warmup_steps: int,
     learning_rate: float,
     decay_ratio: float,
-) -> optax.Schedule:
+) -> Schedule:
     """Returns a linear warmup, linear decay learning rate function."""
     warmup_fn = optax.linear_schedule(
         init_value=0.0, end_value=learning_rate, transition_steps=num_warmup_steps
@@ -42,7 +45,9 @@ def create_learning_rate_fn(
     return schedule_fn
 
 
-def create_optimizer(learning_rate_fn: optax.Schedule, weight_decay: float):
+def create_optimizer(
+    learning_rate_fn: Schedule, weight_decay: float
+) -> GradientTransformation:
     return optax.adamw(
         learning_rate=learning_rate_fn,
         b1=0.9,
@@ -52,46 +57,92 @@ def create_optimizer(learning_rate_fn: optax.Schedule, weight_decay: float):
     )
 
 
-def get_grad_fn(model_state, lora_state):
-    def loss_fn(lora_params, batch, dropout_rng):
-        targets = batch.pop("labels")
+LoraState = TrainState
+
+
+class ModelState(TrainState):
+    dropout_rng: Array
+
+
+def create_loss_fn(
+    model_state: ModelState,
+    lora_state: LoraState,
+    is_regression: bool,
+    is_train: bool,
+) -> Callable:
+    "Returns function that computes loss for model/lora state."
+
+    def loss_fn(lora_params: ArrayTree, batch: dict[str, np.ndarray]) -> Array:
+        labels = batch.pop("labels")
         adapted_model_params = lora_state.apply_fn(
             {"params": lora_params}, model_state.params
         )
         logits = model_state.apply_fn(
             **batch,
             params=adapted_model_params,
-            dropout_rng=dropout_rng,
-            train=True,
+            dropout_rng=model_state.dropout_rng,
+            train=is_train,
         )[0]
-        loss = model_state.loss_fn(logits, targets)
+        if is_regression:
+            loss = metrics.mse_loss(logits, labels)
+        else:
+            if "decoder_attention_mask" in batch:
+                loss = metrics.ce_loss(
+                    logits, labels, padding=batch["decoder_attention_mask"]
+                )
+            else:
+                loss = metrics.ce_loss(logits, labels)
         return loss
 
-    return jax.value_and_grad(loss_fn)
+    return loss_fn
 
 
-def create_train_eval_predict_step_fns(
-    learning_rate_fn: optax.Schedule,
-) -> Tuple[Callable, Callable, Callable]:
+def create_train_step_fn(
+    task_config: TaskConfig, learning_rate_fn: optax.Schedule
+) -> Callable:
+
+    is_regression = task_config.finetune_task_name == "stsb"
+
     @partial(jax.jit, donate_argnums=(1,))
-    def train_step(
-        model_state: ModelState,
-        lora_state: LoraTrainState,
-        batch: dict[str, jax.Array],
-        dropout_rng: jax.Array,
-    ):
-        dropout_rng, new_dropout_rng = jax.random.split(dropout_rng)
-        grad_fn = get_grad_fn(model_state, lora_state)
-        loss, grads = grad_fn(lora_state.params, batch, dropout_rng)
+    def train_step_fn(
+        model_state: ModelState, lora_state: LoraState, batch: dict[str, np.ndarray]
+    ) -> tuple[LoraState, dict[str, Array]]:
+        _, new_dropout_rng = jax.random.split(model_state.dropout_rng)
+        loss_and_grad_fn = jax.value_and_grad(
+            create_loss_fn(model_state, lora_state, is_regression, is_train=True)
+        )
+        loss, grads = loss_and_grad_fn(lora_state.params, batch)
         new_lora_state = lora_state.apply_gradients(grads=grads)
+        new_lora_state = new_lora_state.replace(dropout_rng=new_dropout_rng)
         metrics = {"loss": loss, "learning_rate": learning_rate_fn(lora_state.step)}
-        return new_lora_state, metrics, new_dropout_rng
+        return new_lora_state, metrics
+
+    return train_step_fn
+
+
+def create_validate_step_fn(task_config: TaskConfig) -> Callable:
+
+    is_regression = task_config.finetune_task_name == "stsb"
 
     @jax.jit
-    def eval_step(
-        model_state: ModelState,
-        lora_state: LoraTrainState,
-        batch: dict[str, jax.Array],
+    def validate_step_fn(
+        model_state: ModelState, lora_state: LoraState, batch: dict[str, np.ndarray]
+    ) -> dict[str, Array]:
+        loss_fn = create_loss_fn(model_state, lora_state, is_regression, is_train=False)
+        loss = loss_fn(lora_state.params, batch)
+        metrics = {"loss": loss}
+        return metrics
+
+    return validate_step_fn
+
+
+def create_eval_step_fn(task_config: TaskConfig):
+
+    is_regression = task_config.finetune_task_name == "stsb"
+
+    @jax.jit
+    def eval_step_fn(
+        model_state: ModelState, lora_state: LoraState, batch: dict[str, Array]
     ):
         adapted_model_params = lora_state.apply_fn(
             {"params": lora_state.params}, model_state.params
@@ -99,85 +150,72 @@ def create_train_eval_predict_step_fns(
         logits = model_state.apply_fn(
             **batch, params=adapted_model_params, train=False
         )[0]
-        return model_state.logits_fn(logits)
+
+        return logits[..., 0] if is_regression else logits.argmax(-1)
+
+    return eval_step_fn
+
+
+def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Callable:
+
+    assert isinstance(
+        model, FlaxBartForConditionalGeneration
+    ), "Only BART supported for decoding."
+    assert isinstance(
+        task_config.max_seq_length, Tuple
+    ), "Tuple expected for max_seq_length."
+    assert (
+        task_config.task_type == TaskType.SUMMARIZATION
+    ), "Only summarization supported for decoding."
+
+    gen_kwargs = {"max_length": task_config.max_seq_length[1], "num_beams": 1}
 
     @jax.jit
-    def predict_step(
+    def decode_step_fn(
         model_state: ModelState,
-        lora_state: LoraTrainState,
+        lora_state: LoraState,
         batch: dict[str, jax.Array],
     ):
         adapted_model_params = lora_state.apply_fn(
             {"params": lora_state.params}, model_state.params
         )
-        logits = model_state.apply_fn(
-            **batch, params=adapted_model_params, train=False
-        )[0]
-        return logits
+        output_ids = model.generate(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            params=adapted_model_params,
+            generate_config=GenerationConfig.from_dict(gen_kwargs),
+        )
+        return output_ids
 
-    return train_step, eval_step
-
-
-class ModelState(train_state.TrainState):
-    """Train state with an Optax optimizer.
-
-    Logit and loss functions differ depending on whether the task is classification
-    or regression.
-
-    Args:
-      logits_fn: Applied to last layer to obtain the logits.
-      loss_fn: Function to compute the loss.
-    """
-
-    logits_fn: Callable = flax.struct.field(pytree_node=False)
-    loss_fn: Callable = flax.struct.field(pytree_node=False)
+    return decode_step_fn
 
 
 def create_model_state(
-    model: transformers.FlaxAutoModelForSequenceClassification,
-    is_regression: bool,
+    model: FlaxAutoModel,
+    dropout_rng: jax.Array,
 ) -> ModelState:
     """Create (frozen) model state."""
-    if is_regression:
 
-        def mse_loss(logits, labels):
-            return jnp.mean((logits[..., 0] - labels) ** 2)
-
-        return ModelState.create(
-            apply_fn=model.__call__,  # type: ignore
-            params=model.params,  # type: ignore
-            tx=optax.set_to_zero(),
-            logits_fn=lambda logits: logits[..., 0],
-            loss_fn=mse_loss,
-        )
-
-    else:  # Classification.
-
-        def cross_entropy_loss(logits, labels):
-            xentropy = optax.softmax_cross_entropy_with_integer_labels(logits, labels)
-            return jnp.mean(xentropy)
-
-        return ModelState.create(
-            apply_fn=model.__call__,  # type: ignore
-            params=model.params,  # type: ignore
-            tx=optax.set_to_zero(),
-            logits_fn=lambda logits: logits.argmax(-1),
-            loss_fn=cross_entropy_loss,
-        )
+    return ModelState.create(
+        apply_fn=model.__call__,  # type: ignore
+        params=model.params,  # type: ignore
+        tx=optax.set_to_zero(),
+        dropout_rng=dropout_rng,
+    )
 
 
-def create_lora_train_state(
-    task_config: configs.TaskConfig,
-    model_params: flax.core.FrozenDict[str, jax.Array],
-    learning_rate_fn: optax.Schedule,
-    lora_rng: jax.Array,
-) -> tuple[LoraTrainState, models.LoRA]:
+def create_lora_state(
+    task_config: TaskConfig,
+    model_params: ArrayTree,
+    learning_rate_fn: Schedule,
+    lora_rng: Array,
+) -> tuple[LoraState, Lora]:
     lora_model = models.create_lora_model_from_config(task_config, model_params)
     lora_variables = lora_model.init(lora_rng)
     lora_params = lora_variables["params"]
     tx = create_optimizer(learning_rate_fn, task_config.weight_decay)
     return (
-        LoraTrainState.create(
+        LoraState.create(
             apply_fn=partial(lora_model.apply, method=lora_model.adapt),
             params=lora_params,
             tx=tx,
@@ -187,20 +225,19 @@ def create_lora_train_state(
 
 
 def create_compressed_lora_train_state(
-    uncompressed_lora_state: LoraTrainState,
-    uncompressed_lora_model: models.LoRA,
+    uncompressed_lora_state: LoraState,
+    uncompressed_lora_model: Lora,
     model_state: ModelState,
-    batch: dict,
-    dropout_rng: jax.Array,
-    task_config: configs.TaskConfig,
+    batch: dict[str, np.ndarray],
+    task_config: TaskConfig,
 ):
     assert task_config.lora_compress, "Lora compression is not enabled."
     rank = task_config.lora_rank
     assert rank is not None, "Rank must be specified."
     assert rank % 2 == 0, "Rank must be even."
-    compressed_lora_model = models.LoRA(
-        flat_params_shape_dict=misc_utils.get_filtered_flat_params_shape_dict(
-            model_state.params, task_config
+    compressed_lora_model = models.Lora(
+        flat_params_shape_dict=model_utils.get_filtered_flat_params_shape_dict(
+            model_state.params, task_config.lora_adapt_type
         ),
         depth=task_config.lora_depth,
         init_scale=task_config.lora_init_scale,
@@ -213,22 +250,21 @@ def create_compressed_lora_train_state(
     )
 
     # Get gradient of uncompressed factors
-    value_grad_fn = get_grad_fn(model_state, uncompressed_lora_state)
-    _, uncompressed_grads = value_grad_fn(
-        uncompressed_lora_state.params, batch, dropout_rng
-    )
+    grad_fn = jax.grad(create_loss_fn)(model_state, uncompressed_lora_state)
+    uncompressed_grads = grad_fn(uncompressed_lora_state.params, batch)
 
-    # move to numpy
+    # Move to numpy (do compression on CPU to save memory)
     uncompressed_lora_params_numpy = jax.tree_map(
         np.array, uncompressed_lora_state.params
     )
     uncompressed_grads_numpy = jax.tree_map(np.array, uncompressed_grads)
     uncompressed_e2e_numpy = jax.tree_map(np.array, uncompressed_e2e)
 
-    def get_left_right_factors(w0, g_w0, e2e):
+    def get_left_right_factors(w1, w1_grad, e2e):
+        raise NotImplementedError("This function needs to be fixed")
         half_rank = rank // 2
-        v1 = jnp.linalg.svd(g_w0, full_matrices=False)[2].T[:, :half_rank]
-        v2 = jnp.linalg.svd(g_w0.T @ w0, full_matrices=False)[2].T[:, :half_rank]
+        v1 = jnp.linalg.svd(w1_grad, full_matrices=False)[2].T[:, :half_rank]
+        v2 = jnp.linalg.svd(w1_grad.T @ w1, full_matrices=False)[2].T[:, :half_rank]
         rightT = jnp.linalg.svd(np.concatenate([v1, v2], axis=1), full_matrices=False)[
             0
         ]
@@ -237,13 +273,15 @@ def create_compressed_lora_train_state(
 
     compressed_lora_params_numpy = {}
 
-    print("Compressing LoRA parameters...")
-    for k, g in tqdm(uncompressed_grads_numpy.items()):
+    pbar = tqdm(uncompressed_grads_numpy.items())
+    pbar.set_description("Compressing LoRA parameters")
+
+    for k, g in pbar:
         comp_mf_params = {}
         if not task_config.lora_random_factors:
             left, rightT = get_left_right_factors(
-                uncompressed_lora_params_numpy[k]["w0"],
-                g["w0"],
+                uncompressed_lora_params_numpy[k]["w1"],
+                g["w1"],
                 uncompressed_e2e_numpy[k],
             )
             comp_mf_params["left"] = left
@@ -282,7 +320,7 @@ def create_compressed_lora_train_state(
         ),
     )
 
-    return LoraTrainState.create(
+    return LoraState.create(
         apply_fn=partial(
             compressed_lora_model.apply, method=compressed_lora_model.adapt
         ),

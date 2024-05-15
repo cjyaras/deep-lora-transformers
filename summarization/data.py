@@ -9,7 +9,7 @@ import numpy as np
 import transformers
 
 import configs
-import utils
+import misc_utils
 
 # Summarization tasks
 summarization_name_mapping = {
@@ -112,7 +112,7 @@ def load_dataset(
         )
 
         model_inputs["labels"] = labels["input_ids"]
-        decoder_input_ids = utils.shift_tokens_right(
+        decoder_input_ids = misc_utils.shift_tokens_right(
             labels["input_ids"],  # type: ignore
             pretrained_config.pad_token_id,
             pretrained_config.pad_token_id,

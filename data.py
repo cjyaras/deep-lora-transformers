@@ -7,14 +7,13 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import transformers
+from datasets.arrow_dataset import Dataset
 
-import configs
-import utils
-
-Dataset = datasets.arrow_dataset.Dataset
+import data_utils
+from configs import GlueTaskName, SummarizationTaskName, TaskConfig, TaskType
 
 # Glue tasks
-glue_task_to_keys = {
+GLUE_TASK_TO_KEYS = {
     "cola": ("sentence", None),
     "mnli": ("premise", "hypothesis"),
     "mrpc": ("sentence1", "sentence2"),
@@ -25,22 +24,8 @@ glue_task_to_keys = {
     "stsb": ("sentence1", "sentence2"),
 }
 
-glue_task_to_num_labels = {
-    "cola": 2,
-    "mnli": 3,
-    "mrpc": 2,
-    "qnli": 2,
-    "qqp": 2,
-    "rte": 2,
-    "sst2": 2,
-    "stsb": 1,
-}
-
-BART_PAD_TOKEN_ID = 1
-BART_DECODER_START_TOKEN_ID = 2
-
 # Summarization tasks
-summarization_task_to_keys = {
+SUMMARIZATION_TASK_TO_KEYS = {
     "amazon_reviews_multi": ("review_body", "review_title"),
     "big_patent": ("description", "abstract"),
     "cnn_dailymail": ("article", "highlights"),
@@ -54,18 +39,19 @@ summarization_task_to_keys = {
     "wiki_summary": ("article", "highlights"),
 }
 
+BART_PAD_TOKEN_ID = 1
+BART_DECODER_START_TOKEN_ID = 2
 
-def load_dataset_from_config(
-    task_config: configs.TaskConfig, sample_seed: int
-) -> Tuple[
+
+def load_dataset_from_config(task_config: TaskConfig, sample_seed: int) -> Tuple[
     Dataset,
     Dataset,
     Optional[Dataset],
 ]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
 
-    if task_config.task_type == configs.TaskType.GLUE:
-        assert isinstance(task_config.finetune_task_name, configs.GlueTaskName)
+    if task_config.task_type == TaskType.GLUE:
+        assert isinstance(task_config.finetune_task_name, GlueTaskName)
         assert isinstance(task_config.max_seq_length, int)
         train_dataset, eval_dataset = load_glue_dataset(
             task_config.finetune_task_name,
@@ -75,8 +61,8 @@ def load_dataset_from_config(
             sample_seed,
         )
         predict_dataset = None
-    elif task_config.task_type == configs.TaskType.SUMMARIZATION:
-        assert isinstance(task_config.finetune_task_name, configs.SummarizationTaskName)
+    elif task_config.task_type == TaskType.SUMMARIZATION:
+        assert isinstance(task_config.finetune_task_name, SummarizationTaskName)
         assert isinstance(task_config.max_seq_length, Tuple)
         train_dataset, eval_dataset, predict_dataset = load_summarization_dataset(
             task_config.finetune_task_name,
@@ -91,7 +77,7 @@ def load_dataset_from_config(
 
 
 def load_glue_dataset(
-    finetune_task_name: configs.GlueTaskName,
+    finetune_task_name: GlueTaskName,
     tokenizer: transformers.PreTrainedTokenizerBase,
     max_seq_length: Optional[int],
     num_train_samples: Optional[int],
@@ -109,7 +95,7 @@ def load_glue_dataset(
         return len(tokenizer(*texts)["input_ids"])  # type: ignore
 
     # Preprocess dataset
-    sentence1_key, sentence2_key = glue_task_to_keys[finetune_task_name]
+    sentence1_key, sentence2_key = GLUE_TASK_TO_KEYS[finetune_task_name]
 
     if max_seq_length is not None:
         for k, v in raw_datasets.items():  # type: ignore
@@ -154,7 +140,7 @@ def load_glue_dataset(
 
 
 def load_summarization_dataset(
-    finetune_task_name: configs.SummarizationTaskName,
+    finetune_task_name: SummarizationTaskName,
     tokenizer: transformers.PreTrainedTokenizerBase,
     max_seq_length: Optional[Tuple[int, int]],
     num_train_samples: Optional[int],
@@ -163,7 +149,7 @@ def load_summarization_dataset(
 
     raw_datasets = datasets.load_dataset(finetune_task_name)
 
-    text_key, summary_key = summarization_task_to_keys[finetune_task_name]
+    text_key, summary_key = SUMMARIZATION_TASK_TO_KEYS[finetune_task_name]
 
     def length_of(example):
         text, summary = example[text_key], example[summary_key]
@@ -212,7 +198,7 @@ def load_summarization_dataset(
         )
 
         model_inputs["labels"] = labels["input_ids"]
-        decoder_input_ids = utils.shift_tokens_right(
+        decoder_input_ids = data_utils.shift_tokens_right(
             labels["input_ids"],  # type: ignore
             BART_PAD_TOKEN_ID,
             BART_DECODER_START_TOKEN_ID,

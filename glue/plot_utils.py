@@ -3,6 +3,7 @@ import os
 from typing import cast
 
 import matplotlib.pyplot as plt
+import models
 import numpy as np
 import seaborn as sns
 from matplotlib.collections import LineCollection, PolyCollection
@@ -10,8 +11,7 @@ from matplotlib.ticker import MaxNLocator
 from tqdm.auto import tqdm
 
 import configs
-import models
-import utils
+import misc_utils
 
 metric_dict = {
     "cola": "eval_matthews_correlation",
@@ -91,12 +91,12 @@ def plot_series(
 
 
 def get_final_spectra(experiment_path: str):
-    task_config = utils.get_task_config_from_json(experiment_path=experiment_path)
+    task_config = misc_utils.get_task_config_from_json(experiment_path=experiment_path)
     model_params = models.create_pretrain_model_from_config(
         task_config, num_labels=1
     ).params  # type: ignore
     lora_model = models.create_lora_model_from_config(task_config, model_params)
-    final_lora_params = utils.load_lora_params(
+    final_lora_params = misc_utils.load_lora_params(
         experiment_path=experiment_path, step=task_config.num_train_steps
     )
     final_e2e = lora_model.apply({"params": final_lora_params})
@@ -123,7 +123,7 @@ def plot_final_spectra(experiment_path: str):
 
 
 def get_subspace_traj(experiment_path: str, rank: int):
-    task_config = utils.get_task_config_from_json(experiment_path=experiment_path)
+    task_config = misc_utils.get_task_config_from_json(experiment_path=experiment_path)
     model_params = models.create_pretrain_model_from_config(
         task_config, num_labels=1
     ).params  # type: ignore
@@ -134,7 +134,9 @@ def get_subspace_traj(experiment_path: str, rank: int):
     subspace_vals_dict = {k: [] for k in flat_param_paths}
     for step in step_vals:
         print(f"Loading step {step}")
-        lora_params = utils.load_lora_params(experiment_path=experiment_path, step=step)
+        lora_params = misc_utils.load_lora_params(
+            experiment_path=experiment_path, step=step
+        )
         e2e = lora_model.apply({"params": lora_params})
         e2e = cast(dict, e2e)
 
@@ -154,9 +156,9 @@ def get_cosine_angle_traj(experiment_path: str, rank: int, side="left"):
         Ur_final, Vr_final = v[-1]
         for Ur, Vr in v:
             if side == "left":
-                cosine_angle_vals_dict[k].append(utils.cosine_angle(Ur, Ur_final))
+                cosine_angle_vals_dict[k].append(misc_utils.cosine_angle(Ur, Ur_final))
             elif side == "right":
-                cosine_angle_vals_dict[k].append(utils.cosine_angle(Vr, Vr_final))
+                cosine_angle_vals_dict[k].append(misc_utils.cosine_angle(Vr, Vr_final))
             else:
                 raise ValueError(f"Invalid side {side}")
     return cosine_angle_vals_dict, step_vals
@@ -448,10 +450,10 @@ def get_fewshot_256_ranks():
     runs = os.listdir(experiment_dir)
     run_2 = [run for run in runs if "depth=2" in run][0]
     run_3 = [run for run in runs if "depth=3" in run][0]
-    task_config_2 = utils.get_task_config_from_json(
+    task_config_2 = misc_utils.get_task_config_from_json(
         experiment_path=os.path.join(experiment_dir, run_2)
     )
-    task_config_3 = utils.get_task_config_from_json(
+    task_config_3 = misc_utils.get_task_config_from_json(
         experiment_path=os.path.join(experiment_dir, run_3)
     )
     model_params = models.create_pretrain_model_from_config(
@@ -460,10 +462,18 @@ def get_fewshot_256_ranks():
     lora_model_2 = models.create_lora_model_from_config(task_config_2, model_params)
     lora_model_3 = models.create_lora_model_from_config(task_config_3, model_params)
     run_2_e2e = lora_model_2.apply(
-        {"params": utils.load_lora_params(os.path.join(experiment_dir, run_2), 500)}
+        {
+            "params": misc_utils.load_lora_params(
+                os.path.join(experiment_dir, run_2), 500
+            )
+        }
     )
     run_3_e2e = lora_model_3.apply(
-        {"params": utils.load_lora_params(os.path.join(experiment_dir, run_3), 500)}
+        {
+            "params": misc_utils.load_lora_params(
+                os.path.join(experiment_dir, run_3), 500
+            )
+        }
     )
     run_2_ranks_norms = [(np.linalg.matrix_rank(v), np.linalg.norm(v, ord=2)) for v in tqdm(run_2_e2e.values())]  # type: ignore
     run_3_ranks_norms = [(np.linalg.matrix_rank(v), np.linalg.norm(v, ord=2)) for v in tqdm(run_3_e2e.values())]  # type: ignore
