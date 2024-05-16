@@ -43,11 +43,9 @@ BART_PAD_TOKEN_ID = 1
 BART_DECODER_START_TOKEN_ID = 2
 
 
-def load_dataset_from_config(task_config: TaskConfig, sample_seed: int) -> Tuple[
-    Dataset,
-    Dataset,
-    Optional[Dataset],
-]:
+def load_dataset_from_config(
+    task_config: TaskConfig, sample_seed: int
+) -> Tuple[Dataset, Dataset]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
 
     if task_config.task_type == TaskType.GLUE:
@@ -60,11 +58,10 @@ def load_dataset_from_config(task_config: TaskConfig, sample_seed: int) -> Tuple
             task_config.num_train_samples,
             sample_seed,
         )
-        predict_dataset = None
     elif task_config.task_type == TaskType.SUMMARIZATION:
         assert isinstance(task_config.finetune_task_name, SummarizationTaskName)
         assert isinstance(task_config.max_seq_length, Tuple)
-        train_dataset, eval_dataset, predict_dataset = load_summarization_dataset(
+        train_dataset, eval_dataset = load_summarization_dataset(
             task_config.finetune_task_name,
             tokenizer,
             task_config.max_seq_length,
@@ -73,7 +70,7 @@ def load_dataset_from_config(task_config: TaskConfig, sample_seed: int) -> Tuple
         )
     else:
         raise ValueError(f"Task type {task_config.task_type} not supported.")
-    return train_dataset, eval_dataset, predict_dataset
+    return train_dataset, eval_dataset
 
 
 def load_glue_dataset(
@@ -84,7 +81,7 @@ def load_glue_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset("glue", finetune_task_name)
+    raw_datasets = datasets.load_dataset("nyu-mll/glue", finetune_task_name)
 
     def length_of(example):
         texts = (
@@ -116,12 +113,12 @@ def load_glue_dataset(
             if sentence2_key is None
             else (example[sentence1_key], example[sentence2_key])
         )
+        # TODO: Why isn't this a numpy array?
         result = tokenizer(
             *texts,
             padding="max_length",
             max_length=max_seq_length,
             truncation=True,
-            return_tensors="np",
         )
         result["labels"] = example["label"]
         return result
@@ -145,7 +142,7 @@ def load_summarization_dataset(
     max_seq_length: Optional[Tuple[int, int]],
     num_train_samples: Optional[int],
     sample_seed: int,
-) -> Tuple[Dataset, Dataset, Dataset]:
+) -> Tuple[Dataset, Dataset]:
 
     raw_datasets = datasets.load_dataset(finetune_task_name)
 
@@ -186,7 +183,6 @@ def load_summarization_dataset(
             max_length=max_source_length,
             truncation=True,
             padding="max_length",
-            return_tensors="np",
         )
 
         labels = tokenizer(
@@ -194,7 +190,6 @@ def load_summarization_dataset(
             max_length=max_target_length,
             padding="max_length",
             truncation=True,
-            return_tensors="np",
         )
 
         model_inputs["labels"] = labels["input_ids"]
@@ -222,12 +217,8 @@ def load_summarization_dataset(
         datasets.arrow_dataset.Dataset,
         processed_datasets["validation"],  # type: ignore
     )
-    predict_dataset = cast(
-        datasets.arrow_dataset.Dataset,
-        processed_datasets["test"],  # type: ignore
-    )
 
-    return train_dataset, eval_dataset, predict_dataset
+    return train_dataset, eval_dataset
 
 
 def create_train_iterator(
@@ -250,6 +241,7 @@ def create_train_iterator(
 
             for perm in perms:
                 batch = dataset[perm]
+                batch = {k: np.array(v) for k, v in batch.items()}
 
                 yield batch
 
@@ -264,5 +256,6 @@ def create_eval_iterator(
 
     for idx in batch_idx:
         batch = dataset[idx]
+        batch = {k: np.array(v) for k, v in batch.items()}
 
         yield batch

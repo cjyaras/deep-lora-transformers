@@ -3,7 +3,6 @@ import math
 import os
 import shutil
 
-import evaluate
 import flax
 import flax.metrics.tensorboard
 import jax
@@ -12,7 +11,9 @@ import transformers
 
 import configs
 import data
-import misc_utils
+import data_utils
+import logging_utils
+import metrics
 import models
 import train
 
@@ -32,9 +33,15 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         task_config.decay_ratio,
     )
 
-    train_step, eval_step = train.create_train_eval_step_fns(learning_rate_fn)
+    train_step = train.create_train_step_fn(task_config, learning_rate_fn)
 
-    eval_metric = evaluate.load("glue", task_config.finetune_task_name)
+    if task_config.task_type == configs.TaskType.GLUE:
+        assert isinstance(task_config.finetune_task_name, configs.GlueTaskName)
+        eval_metric = metrics.GlueEvalMetric(task_config.finetune_task_name)
+        eval_step = train.create_eval_step_fn(task_config)
+    elif task_config.task_type == configs.TaskType.SUMMARIZATION:
+        eval_metric = metrics.SummarizationEvalMetric(task_config.pretrain_model)
+        eval_step = train.create_decode_step_fn(pretrain_model, task_config)
 
     assert (
         transformers.is_tensorboard_available()
@@ -42,21 +49,10 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
 
     for seed in seeds:
         train_dataset, eval_dataset = data.load_dataset_from_config(task_config, seed)
-
         rng = jax.random.PRNGKey(seed)
-
         lora_rng, rng = jax.random.split(rng)
-        (
-            uncompressed_lora_state,
-            uncompressed_lora_model,
-        ) = train.create_lora_train_state(
-            task_config,
-            pretrain_model.params,  # type: ignore
-            learning_rate_fn=learning_rate_fn,
-            lora_rng=lora_rng,
-        )
 
-        experiment_path = misc_utils.get_experiment_path(task_config, seed)
+        experiment_path = logging_utils.get_experiment_path(task_config, seed)
         print(experiment_path)
 
         if os.path.exists(experiment_path):
@@ -71,8 +67,17 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
             input_rng, train_dataset, task_config.train_batch_size
         )
 
-        model_state = train.create_model_state(
-            model=pretrain_model, is_regression=is_regression, dropout_rng=dropout_rng
+        model_state = train.create_model_state(model=pretrain_model)
+
+        (
+            uncompressed_lora_state,
+            uncompressed_lora_model,
+        ) = train.create_lora_state(
+            task_config,
+            pretrain_model.params,  # type: ignore
+            learning_rate_fn=learning_rate_fn,
+            lora_rng=lora_rng,
+            dropout_rng=dropout_rng,
         )
 
         # Compression
@@ -106,25 +111,22 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         )
 
         if 0 in task_config.save_step_points:
-            misc_utils.save_lora_params(experiment_path, 0, lora_state.params)
+            logging_utils.save_lora_params(experiment_path, 0, lora_state.params)
 
         result_dict = {}
 
         for step, train_batch in enumerate(tqdm_train_iterator, 1):
-            # Iterator is infinite, need to break out
             if step > task_config.num_train_steps:
                 break
 
-            lora_state, train_metric, dropout_rng = train_step(
-                model_state, lora_state, train_batch, dropout_rng
-            )
+            lora_state, train_metric = train_step(model_state, lora_state, train_batch)
             train_metrics.append(train_metric)
 
             if (
                 step % task_config.log_eval_steps == 0
                 or step == task_config.num_train_steps
             ):
-                misc_utils.write_train_metric(
+                logging_utils.write_train_metric(
                     summary_writer, result_dict, train_metrics, step
                 )
                 train_metrics = []
@@ -138,7 +140,7 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
                     total=math.ceil(len(eval_dataset) / task_config.eval_batch_size),
                 )
                 for eval_batch in tqdm_eval_iterator:
-                    padded_eval_batch, labels = misc_utils.pad_to_batch_size(
+                    padded_eval_batch, labels = data_utils.pad_to_batch_size(
                         eval_batch, task_config.eval_batch_size
                     )
                     padded_predictions = eval_step(
@@ -148,7 +150,7 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
                     eval_metric.add_batch(predictions=predictions, references=labels)
 
                 eval_metric_value = eval_metric.compute()
-                misc_utils.write_eval_metric(
+                logging_utils.write_eval_metric(
                     summary_writer, result_dict, eval_metric_value, step
                 )
                 print(
@@ -156,7 +158,7 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
                 )
 
             if step in task_config.save_step_points:
-                misc_utils.save_lora_params(experiment_path, step, lora_state.params)
+                logging_utils.save_lora_params(experiment_path, step, lora_state.params)
 
         with open(os.path.join(experiment_path, "results.json"), "w") as f:
             json.dump(result_dict, f)

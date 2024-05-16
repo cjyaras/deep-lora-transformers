@@ -57,10 +57,10 @@ def create_optimizer(
     )
 
 
-LoraState = TrainState
+ModelState = TrainState
 
 
-class ModelState(TrainState):
+class LoraState(TrainState):
     dropout_rng: Array
 
 
@@ -80,7 +80,7 @@ def create_loss_fn(
         logits = model_state.apply_fn(
             **batch,
             params=adapted_model_params,
-            dropout_rng=model_state.dropout_rng,
+            dropout_rng=lora_state.dropout_rng,
             train=is_train,
         )[0]
         if is_regression:
@@ -107,7 +107,7 @@ def create_train_step_fn(
     def train_step_fn(
         model_state: ModelState, lora_state: LoraState, batch: dict[str, np.ndarray]
     ) -> tuple[LoraState, dict[str, Array]]:
-        _, new_dropout_rng = jax.random.split(model_state.dropout_rng)
+        _, new_dropout_rng = jax.random.split(lora_state.dropout_rng)
         loss_and_grad_fn = jax.value_and_grad(
             create_loss_fn(model_state, lora_state, is_regression, is_train=True)
         )
@@ -160,13 +160,13 @@ def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Call
 
     assert isinstance(
         model, FlaxBartForConditionalGeneration
-    ), "Only BART supported for decoding."
+    ), "Only BART supports decoding."
     assert isinstance(
         task_config.max_seq_length, Tuple
     ), "Tuple expected for max_seq_length."
     assert (
         task_config.task_type == TaskType.SUMMARIZATION
-    ), "Only summarization supported for decoding."
+    ), "Only summarization supports decoding."
 
     gen_kwargs = {"max_length": task_config.max_seq_length[1], "num_beams": 1}
 
@@ -190,17 +190,13 @@ def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Call
     return decode_step_fn
 
 
-def create_model_state(
-    model: FlaxAutoModel,
-    dropout_rng: jax.Array,
-) -> ModelState:
+def create_model_state(model: FlaxAutoModel) -> ModelState:
     """Create (frozen) model state."""
 
     return ModelState.create(
         apply_fn=model.__call__,  # type: ignore
         params=model.params,  # type: ignore
         tx=optax.set_to_zero(),
-        dropout_rng=dropout_rng,
     )
 
 
@@ -209,6 +205,7 @@ def create_lora_state(
     model_params: ArrayTree,
     learning_rate_fn: Schedule,
     lora_rng: Array,
+    dropout_rng: Array,
 ) -> tuple[LoraState, Lora]:
     lora_model = models.create_lora_model_from_config(task_config, model_params)
     lora_variables = lora_model.init(lora_rng)
@@ -219,6 +216,7 @@ def create_lora_state(
             apply_fn=partial(lora_model.apply, method=lora_model.adapt),
             params=lora_params,
             tx=tx,
+            dropout_rng=dropout_rng,
         ),
         lora_model,
     )
@@ -261,7 +259,7 @@ def create_compressed_lora_train_state(
     uncompressed_e2e_numpy = jax.tree_map(np.array, uncompressed_e2e)
 
     def get_left_right_factors(w1, w1_grad, e2e):
-        raise NotImplementedError("This function needs to be fixed")
+        # TODO: This function needs to be fixed
         half_rank = rank // 2
         v1 = jnp.linalg.svd(w1_grad, full_matrices=False)[2].T[:, :half_rank]
         v2 = jnp.linalg.svd(w1_grad.T @ w1, full_matrices=False)[2].T[:, :half_rank]

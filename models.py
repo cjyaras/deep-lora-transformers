@@ -121,7 +121,7 @@ class Lora(nn.Module):
         self.mfs = mfs
 
     def __call__(self):
-        return {k: v() for k, v in self.dmfs.items()}
+        return {k: v() for k, v in self.mfs.items()}
 
     def adapt(self, model_params: ArrayTree) -> ArrayTree:
         updates = self()

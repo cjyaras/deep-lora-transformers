@@ -1,9 +1,14 @@
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
+import evaluate
 import jax.numpy as jnp
+import nltk
 import numpy as np
 import optax
+import transformers
 from jax import Array
+
+from configs import GlueTaskName, ModelType
 
 
 def ce_loss(logits: Array, labels: np.ndarray, padding: Optional[np.ndarray] = None):
@@ -19,37 +24,55 @@ def mse_loss(logits: Array, labels: np.ndarray):
     return jnp.mean((logits[..., 0] - labels) ** 2)
 
 
-class EvalMetric:
-    pass
+class GlueEvalMetric:
+
+    def __init__(self, finetune_task_name: GlueTaskName):
+        self.eval_metric = evaluate.load("glue", finetune_task_name)
+
+    def add_batch(self, predictions, references):
+        self.eval_metric.add_batch(predictions=predictions, references=references)
+
+    def compute(self) -> Dict:
+        result = self.eval_metric.compute()
+        assert result is not None
+        return result
 
 
-# metric = evaluate.load("rouge", cache_dir=model_args.cache_dir)
+class SummarizationEvalMetric:
 
+    def __init__(self, pretrain_model: ModelType):
+        assert (
+            pretrain_model == ModelType.BART
+        ), "Only BART is supported for summarization"
+        self.eval_metric = evaluate.load("rouge")
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(pretrain_model)
 
-# def postprocess_text(preds, labels):
-#     preds = [pred.strip() for pred in preds]
-#     labels = [label.strip() for label in labels]
+    @staticmethod
+    def postprocess_text(
+        preds: List[str], labels: List[str]
+    ) -> Tuple[List[str], List[str]]:
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
 
-#     # rougeLSum expects newline after each sentence
-#     preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-#     labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
+        # rougeLSum expects newline after each sentence
+        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
+        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
 
-#     return preds, labels
+        return preds, labels
 
+    def add_batch(self, predictions, references):
+        decoded_preds = self.tokenizer.batch_decode(
+            predictions, skip_special_tokens=True
+        )
+        decoded_labels = self.tokenizer.batch_decode(
+            references, skip_special_tokens=True
+        )
+        decoded_preds, decoded_labels = self.postprocess_text(
+            decoded_preds, decoded_labels
+        )
+        self.eval_metric.add_batch(predictions=decoded_preds, references=decoded_labels)
 
-# def compute_metrics(preds, labels):
-#     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-#     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-#     # Some simple post-processing
-#     decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-
-#     result = metric.compute(
-#         predictions=decoded_preds, references=decoded_labels, use_stemmer=True
-#     )
-#     result = {k: round(v * 100, 4) for k, v in result.items()}
-#     prediction_lens = [
-#         np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds
-#     ]
-#     result["gen_len"] = np.mean(prediction_lens)
-#     return result
+    def compute(self) -> Dict:
+        result = self.eval_metric.compute()
+        assert result is not None
+        return result

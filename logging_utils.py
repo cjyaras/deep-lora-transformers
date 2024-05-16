@@ -1,6 +1,8 @@
 import os
+from typing import Dict, List
 
 import flax.training.checkpoints
+import orbax.checkpoint as ocp
 from chex import ArrayTree
 from flax.metrics.tensorboard import SummaryWriter
 
@@ -9,8 +11,8 @@ from configs import TaskConfig
 
 def write_train_metric(
     summary_writer: SummaryWriter,
-    result_dict: dict,
-    train_metrics: dict,
+    result_dict: Dict,
+    train_metrics: List,
     step: int,
 ):
     for i, metric in enumerate(train_metrics):
@@ -26,8 +28,8 @@ def write_train_metric(
 
 def write_eval_metric(
     summary_writer: SummaryWriter,
-    result_dict: dict,
-    eval_metrics: dict,
+    result_dict: Dict,
+    eval_metrics: Dict,
     step: int,
 ):
     for metric_name, value in eval_metrics.items():
@@ -36,6 +38,21 @@ def write_eval_metric(
             result_dict[tag] = []
         result_dict[tag].append({"step": step, "value": value})
         summary_writer.scalar(f"eval_{metric_name}", value, step)
+
+
+class Checkpointer:
+
+    def __init__(self, experiment_path: str):
+        ckpt_dir = os.path.join(experiment_path, "checkpoints")
+        options = ocp.CheckpointManagerOptions()
+        self.manager = ocp.CheckpointManager(ckpt_dir, options=options)
+
+    def save(self, step: int, lora_params: ArrayTree):
+        self.manager.save(step, args=ocp.args.StandardSave(lora_params))  # type: ignore
+        self.manager.wait_until_finished()
+
+    def load(self, step: int):
+        self.manager.restore(step)
 
 
 def save_lora_params(experiment_path: str, step: int, lora_params: ArrayTree):
