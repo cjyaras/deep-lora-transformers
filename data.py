@@ -113,12 +113,13 @@ def load_glue_dataset(
             if sentence2_key is None
             else (example[sentence1_key], example[sentence2_key])
         )
-        # TODO: Why isn't this a numpy array?
+
         result = tokenizer(
             *texts,
             padding="max_length",
             max_length=max_seq_length,
             truncation=True,
+            return_tensors="np",
         )
         result["labels"] = example["label"]
         return result
@@ -183,6 +184,7 @@ def load_summarization_dataset(
             max_length=max_source_length,
             truncation=True,
             padding="max_length",
+            return_tensors="np",
         )
 
         labels = tokenizer(
@@ -190,6 +192,7 @@ def load_summarization_dataset(
             max_length=max_target_length,
             padding="max_length",
             truncation=True,
+            return_tensors="np",
         )
 
         model_inputs["labels"] = labels["input_ids"]

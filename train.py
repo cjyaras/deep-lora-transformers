@@ -21,6 +21,7 @@ import metrics
 import model_utils
 import models
 from configs import TaskConfig, TaskType
+from data import BART_DECODER_START_TOKEN_ID
 from models import Lora
 
 
@@ -168,7 +169,11 @@ def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Call
         task_config.task_type == TaskType.SUMMARIZATION
     ), "Only summarization supports decoding."
 
-    gen_kwargs = {"max_length": task_config.max_seq_length[1], "num_beams": 1}
+    gen_kwargs = {
+        "max_length": task_config.max_seq_length[1],
+        "num_beams": 1,
+        "decoder_start_token_id": BART_DECODER_START_TOKEN_ID,
+    }
 
     @jax.jit
     def decode_step_fn(
@@ -183,9 +188,9 @@ def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Call
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
             params=adapted_model_params,
-            generate_config=GenerationConfig.from_dict(gen_kwargs),
+            generation_config=GenerationConfig.from_dict(gen_kwargs),
         )
-        return output_ids
+        return output_ids.sequences
 
     return decode_step_fn
 

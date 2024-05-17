@@ -59,6 +59,8 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
             shutil.rmtree(experiment_path)
         summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_path)
 
+        checkpointer = logging_utils.Checkpointer(experiment_path)
+
         with open(os.path.join(experiment_path, "config.json"), "w") as f:
             f.write(task_config.to_json(indent=4))  # type: ignore
 
@@ -111,7 +113,7 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         )
 
         if 0 in task_config.save_step_points:
-            logging_utils.save_lora_params(experiment_path, 0, lora_state.params)
+            checkpointer.save(0, lora_state.params)
 
         result_dict = {}
 
@@ -158,7 +160,7 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
                 )
 
             if step in task_config.save_step_points:
-                logging_utils.save_lora_params(experiment_path, step, lora_state.params)
+                checkpointer.save(step, lora_state.params)
 
         with open(os.path.join(experiment_path, "results.json"), "w") as f:
             json.dump(result_dict, f)

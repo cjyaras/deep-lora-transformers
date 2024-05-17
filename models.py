@@ -158,7 +158,7 @@ def create_pretrain_model_from_config(
 
     config = AutoConfig.from_pretrained(
         task_config.pretrain_model,
-        num_labels=GLUE_TASK_TO_NUM_LABELS.get(task_config.finetune_task_name),
+        num_labels=GLUE_TASK_TO_NUM_LABELS.get(task_config.finetune_task_name, 1),
     )
 
     model = (
