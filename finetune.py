@@ -56,9 +56,9 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         print(experiment_path)
 
         if os.path.exists(experiment_path):
-            shutil.rmtree(experiment_path)
-        summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_path)
+            raise FileExistsError(f"Experiment {experiment_path} already exists.")
 
+        summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_path)
         checkpointer = logging_utils.Checkpointer(experiment_path)
 
         with open(os.path.join(experiment_path, "config.json"), "w") as f:

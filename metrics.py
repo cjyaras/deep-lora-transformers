@@ -10,6 +10,11 @@ from jax import Array
 
 from configs import GlueTaskName, ModelType
 
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt")
+
 
 def ce_loss(logits: Array, labels: np.ndarray, padding: Optional[np.ndarray] = None):
     batch_loss = optax.softmax_cross_entropy_with_integer_labels(logits, labels)
@@ -35,6 +40,7 @@ class GlueEvalMetric:
     def compute(self) -> Dict:
         result = self.eval_metric.compute()
         assert result is not None
+        result = {k: round(v * 100, 2) for k, v in result.items()}
         return result
 
 
@@ -75,4 +81,5 @@ class SummarizationEvalMetric:
     def compute(self) -> Dict:
         result = self.eval_metric.compute()
         assert result is not None
+        result = {k: round(v * 100, 2) for k, v in result.items()}
         return result
