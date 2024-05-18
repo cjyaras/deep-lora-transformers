@@ -33,15 +33,15 @@ class GlueTaskName(StrEnum):
 
 
 class SummarizationTaskName(StrEnum):
-    AMAZON_REVIEWS_MULTI = "amazon_reviews_multi"
-    BIG_PATENT = "big_patent"
+    # AMAZON_REVIEWS_MULTI = "amazon_reviews_multi"
+    # BIG_PATENT = "big_patent"
     CNN_DAILYMAIL = "cnn_dailymail"
-    ORANGE_SUM = "orange_sum"
-    PN_SUMMARY = "pn_summary"
-    PSC = "psc"
+    # ORANGE_SUM = "orange_sum"
+    # PN_SUMMARY = "pn_summary"
+    # PSC = "psc"
     SAMSUM = "samsum"
-    THAISUM = "thaisum"
-    XGLUE = "xglue"
+    # THAISUM = "thaisum"
+    # XGLUE = "xglue"
     XSUM = "xsum"
     WIKI_SUMMARY = "wiki_summary"
 

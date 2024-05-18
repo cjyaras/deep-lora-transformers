@@ -13,7 +13,18 @@ task_config = configs.TaskConfig()
 
 task_config.task_type = configs.TaskType.SUMMARIZATION
 task_config.pretrain_model = configs.ModelType.BART
-task_config.finetune_task_name = configs.SummarizationTaskName.XSUM
+# AMAZON_REVIEWS_MULTI = "amazon_reviews_multi"
+# BIG_PATENT = "big_patent"
+# CNN_DAILYMAIL = "cnn_dailymail"
+# ORANGE_SUM = "orange_sum"
+# PN_SUMMARY = "pn_summary"
+# PSC = "psc"
+# SAMSUM = "samsum"
+# THAISUM = "thaisum"
+# XGLUE = "xglue"
+# XSUM = "xsum"
+# WIKI_SUMMARY = "wiki_summary"
+task_config.finetune_task_name = configs.SummarizationTaskName.WIKI_SUMMARY
 task_config.max_seq_length = (128, 32)
 task_config.lora_adapt_type = configs.LoraAdaptType.ONLY_QUERY_VALUE
 
