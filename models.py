@@ -38,7 +38,7 @@ class MatrixFactorization(nn.Module):
         layers = []
         layers.append(
             self.param(
-                "w1",
+                "W1",
                 init_fn,
                 (set_width, self.shape[1]),
             )
@@ -46,14 +46,14 @@ class MatrixFactorization(nn.Module):
         for i in range(2, self.depth):
             layers.append(
                 self.param(
-                    f"w{i}",
+                    f"W{i}",
                     init_fn,
                     (set_width, set_width),
                 )
             )
         layers.append(
             self.param(
-                f"w{self.depth}",
+                f"W{self.depth}",
                 last_init_fn,
                 (self.shape[0], set_width),
             )
@@ -78,14 +78,14 @@ class CompressedMatrixFactorization(nn.Module):
             "left", nn.initializers.orthogonal(), (self.shape[0], self.rank)
         )
         self.right_factor = self.param(
-            "right", nn.initializers.orthogonal(), (self.rank, self.shape[1])
+            "right", nn.initializers.orthogonal(), (self.shape[1], self.rank)
         )
         self.mf = MatrixFactorization(
             (self.rank, self.rank), self.init_scale, self.depth, None
         )
 
     def __call__(self):
-        return jnp.linalg.multi_dot([self.left_factor, self.mf(), self.right_factor])
+        return jnp.linalg.multi_dot([self.left_factor, self.mf(), self.right_factor.T])
 
 
 class Lora(nn.Module):

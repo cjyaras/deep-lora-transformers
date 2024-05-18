@@ -256,23 +256,38 @@ def create_compressed_lora_train_state(
     grad_fn = jax.grad(create_loss_fn)(model_state, uncompressed_lora_state)
     uncompressed_grads = grad_fn(uncompressed_lora_state.params, batch)
 
-    # Move to numpy (do compression on CPU to save memory)
+    # Move to numpy (do compression on CPU to save GPU memory)
     uncompressed_lora_params_numpy = jax.tree_map(
         np.array, uncompressed_lora_state.params
     )
     uncompressed_grads_numpy = jax.tree_map(np.array, uncompressed_grads)
     uncompressed_e2e_numpy = jax.tree_map(np.array, uncompressed_e2e)
 
-    def get_left_right_factors(w1, w1_grad, e2e):
-        # TODO: This function needs to be fixed
+    def svd(A):
+        U, s, VT = np.linalg.svd(A, full_matrices=True)
+        return U, s, VT.T
+
+    def get_left_right_factors(W1, W1_grad, e2e):
+        m, n = W1.shape
+        swap = m < n
+        if swap:
+            W1 = W1.T
+            W1_grad = W1_grad.T
+            m, n = n, m
+
         half_rank = rank // 2
-        v1 = jnp.linalg.svd(w1_grad, full_matrices=False)[2].T[:, :half_rank]
-        v2 = jnp.linalg.svd(w1_grad.T @ w1, full_matrices=False)[2].T[:, :half_rank]
-        rightT = jnp.linalg.svd(np.concatenate([v1, v2], axis=1), full_matrices=False)[
-            0
-        ]
-        left = e2e @ rightT / (task_config.lora_init_scale**task_config.lora_depth)
-        return left, rightT
+        Ugrad, _, Vgrad = svd(W1_grad)
+        Va = W1.T @ Ugrad[:, half_rank:] / task_config.lora_init_scale
+        Vb = Vgrad[:, half_rank:]
+        V0 = Va @ svd(np.concatenate([Va, -Vb], axis=1))[2][:half_rank, n:]
+        V = svd(V0)[0][:, ::-1]
+        right = V[:, :rank]
+        left = e2e @ right / (task_config.lora_init_scale**task_config.lora_depth)
+
+        if swap:
+            return right, left
+        else:
+            return left, right
 
     compressed_lora_params_numpy = {}
 
@@ -282,19 +297,19 @@ def create_compressed_lora_train_state(
     for k, g in pbar:
         comp_mf_params = {}
         if not task_config.lora_random_factors:
-            left, rightT = get_left_right_factors(
-                uncompressed_lora_params_numpy[k]["w1"],
-                g["w1"],
+            left, right = get_left_right_factors(
+                uncompressed_lora_params_numpy[k]["W1"],
+                g["W1"],
                 uncompressed_e2e_numpy[k],
             )
             comp_mf_params["left"] = left
-            comp_mf_params["right"] = rightT.T
+            comp_mf_params["right"] = right
         else:
             m, n = uncompressed_e2e_numpy[k].shape
             left = np.random.randn(m, rank)
             left /= np.linalg.norm(left, axis=0, keepdims=True)
-            right = np.random.randn(rank, n)
-            right /= np.linalg.norm(right, axis=1, keepdims=True)
+            right = np.random.randn(n, rank)
+            right /= np.linalg.norm(right, axis=0, keepdims=True)
             comp_mf_params["left"] = left
             comp_mf_params["right"] = right
         mf_params = {}
