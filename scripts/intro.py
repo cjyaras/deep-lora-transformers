@@ -43,6 +43,8 @@ except FileExistsError:
 
 experiment_path = logging_utils.get_experiment_path(task_config, seed=0)
 
+## Left figure
+
 model_params = models.create_pretrain_model_from_config(task_config).params  # type: ignore
 lora_model = models.create_lora_model_from_config(task_config, model_params)
 final_lora_params = logging_utils.load_lora_params(
@@ -62,11 +64,11 @@ ax.set_yticks([])
 ax.set_xlabel("\nSV Index", fontsize=14)
 ax.set_ylabel("Adapted Layer", fontsize=14)
 ax.set_yticks([])
-# ax.set_zticks([])  # type: ignore
 fig.savefig(
     os.path.join("../figures", "final_spectra.png"), dpi=500, bbox_inches="tight"
 )
 
+## Middle figure
 
 rank = 8
 step_vals = np.array(task_config.save_step_points)
@@ -99,6 +101,7 @@ for k, v in subspace_vals_dict.items():
 
 series = np.array(list(cosine_angle_vals_dict.values()))
 filtered_series = series[series[:, 4] > 0.5]
+
 fig = plt.figure()
 ax = fig.add_subplot(111, projection="3d")
 plot_utils.plot_series(
@@ -112,6 +115,7 @@ plot_utils.plot_series(
     roll=0,
     linewidth=2.0,
     alpha=1.0,
+    line_plot=True,
 )
 ax.set_xticks(np.linspace(0, task_config.num_train_steps, 5, dtype=int))
 ax.set_xlabel("\nIteration", fontsize=14)
@@ -122,14 +126,19 @@ fig.savefig(
     os.path.join("../figures", "cosine_angle_traj.png"), dpi=500, bbox_inches="tight"
 )
 
+# ## Right figure
+
 with open(os.path.join(experiment_path, "results.json")) as f:
     results = json.load(f)
 step_vals, loss_vals = list(
     zip(*[(pair["step"], pair["value"]) for pair in results["train_loss"]])
 )
 
-plt.plot(step_vals, plot_utils.smooth(loss_vals, 0.9))
-plt.xlabel("Iteration", fontsize=20)
-plt.ylabel("Train Loss", fontsize=20)
-plt.ylim([0, 2])
-plt.savefig(os.path.join("../figures", "train_loss.png"), dpi=500, bbox_inches="tight")
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+ax.plot(step_vals, plot_utils.smooth(loss_vals, 0.9))
+ax.set_xlabel("Iteration", fontsize=20)
+ax.set_ylabel("Train Loss", fontsize=20)
+ax.set_ylim(0, 2)
+fig.savefig(os.path.join("../figures", "train_loss.png"), dpi=500, bbox_inches="tight")

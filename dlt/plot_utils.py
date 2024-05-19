@@ -17,6 +17,7 @@ def plot_series(
     roll=0,
     alpha=1.0,
     linewidth=1.0,
+    line_plot=False,
 ):
     n_x_indices, n_y_indices = series.shape
     x_indices = np.arange(n_x_indices)
@@ -29,25 +30,40 @@ def plot_series(
 
     spectrum_verts = []
 
-    for idx in x_indices:
-        spectrum_verts.append(
-            [
-                (0, np.min(series) - 0.05),
-                *zip(y_points, series[idx, :]),
-                (y_points[-1], np.min(series) - 0.05),
-            ]
+    if line_plot:
+
+        for idx in x_indices:
+            spectrum_verts.append(
+                [(0, np.min(series) - 0.05), *zip(y_points, series[idx, :])]
+            )
+
+        spectrum_poly = LineCollection(spectrum_verts)
+        spectrum_poly.set_linewidth(linewidth)
+        spectrum_poly.set_alpha(alpha)
+        spectrum_poly.set_edgecolor(
+            plt.colormaps[color](np.linspace(0, 0.7, len(spectrum_verts)))  # type: ignore
         )
 
-    spectrum_poly = PolyCollection(spectrum_verts)
-    spectrum_poly.set_linewidth(linewidth)
-    spectrum_poly.set_alpha(alpha)
-    spectrum_poly.set_facecolor(
-        plt.colormaps[color](np.linspace(0, 0.7, len(spectrum_verts)))  # type: ignore
-    )
-    spectrum_poly.set_edgecolor("black")
+    else:
+
+        for idx in x_indices:
+            spectrum_verts.append(
+                [
+                    (0, np.min(series) - 0.05),
+                    *zip(y_points, series[idx, :]),
+                    (y_points[-1], np.min(series) - 0.05),
+                ]
+            )
+
+        spectrum_poly = PolyCollection(spectrum_verts)
+        spectrum_poly.set_linewidth(linewidth)
+        spectrum_poly.set_alpha(alpha)
+        spectrum_poly.set_facecolor(
+            plt.colormaps[color](np.linspace(0, 0.7, len(spectrum_verts)))  # type: ignore
+        )
+        spectrum_poly.set_edgecolor("black")
 
     ax.set_box_aspect(aspect=None, zoom=zoom)
-
     ax.add_collection3d(spectrum_poly, zs=x_indices, zdir="y")
 
     if crossing_lines:

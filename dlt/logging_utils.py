@@ -45,7 +45,9 @@ class _Checkpointer:
     def __init__(self, experiment_path: str):
         ckpt_dir = os.path.join(experiment_path, "checkpoints")
         options = ocp.CheckpointManagerOptions(enable_async_checkpointing=True)
-        self.manager = ocp.CheckpointManager(ckpt_dir, options=options)
+        self.manager = ocp.CheckpointManager(
+            ckpt_dir, options=options, item_handlers=ocp.StandardCheckpointHandler()
+        )
 
     def __enter__(self):
         return self
