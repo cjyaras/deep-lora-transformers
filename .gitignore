@@ -1,6 +1,3 @@
-*DS_STORE*
-*pyc
-*.csv
-*.png
-*.out
-*checkpoints*
+.venv
+__pycache__
+*.egg-info

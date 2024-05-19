@@ -1,7 +1,6 @@
 import json
 import math
 import os
-import shutil
 
 import flax
 import flax.metrics.tensorboard
@@ -9,13 +8,7 @@ import jax
 import tqdm.auto as tqdm_lib
 import transformers
 
-import configs
-import data
-import data_utils
-import logging_utils
-import metrics
-import models
-import train
+from . import configs, data, data_utils, logging_utils, metrics, models, train
 
 experiment_dir = os.path.join(os.getcwd(), "experiments")
 

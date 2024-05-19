@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from chex import ArrayTree
 
-from configs import LoraAdaptType
+from .configs import LoraAdaptType
 
 BERT_ONLY_QUERY_VALUE = [
     "attention/self/query/kernel",

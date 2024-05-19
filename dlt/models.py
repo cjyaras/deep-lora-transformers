@@ -12,9 +12,8 @@ from transformers import (
     FlaxAutoModelForSequenceClassification,
 )
 
-import misc_utils
-import model_utils
-from configs import ModelType, TaskConfig
+from . import misc_utils, model_utils
+from .configs import ModelType, TaskConfig
 
 
 class MatrixFactorization(nn.Module):

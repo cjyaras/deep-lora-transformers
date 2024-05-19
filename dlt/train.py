@@ -17,12 +17,10 @@ from transformers import (
     GenerationConfig,
 )
 
-import metrics
-import model_utils
-import models
-from configs import TaskConfig, TaskType
-from data import BART_DECODER_START_TOKEN_ID
-from models import Lora
+from . import metrics, model_utils, models
+from .configs import TaskConfig, TaskType
+from .data import BART_DECODER_START_TOKEN_ID
+from .models import Lora
 
 
 def create_learning_rate_fn(

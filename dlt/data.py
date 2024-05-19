@@ -7,10 +7,11 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import transformers
+from datasets import VerificationMode
 from datasets.arrow_dataset import Dataset
 
-import data_utils
-from configs import GlueTaskName, SummarizationTaskName, TaskConfig, TaskType
+from . import data_utils
+from .configs import GlueTaskName, SummarizationTaskName, TaskConfig, TaskType
 
 # Glue tasks
 GLUE_TASK_TO_KEYS = {
@@ -81,7 +82,9 @@ def load_glue_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset("nyu-mll/glue", finetune_task_name)
+    raw_datasets = datasets.load_dataset(
+        "nyu-mll/glue", finetune_task_name, verification_mode=VerificationMode.NO_CHECKS
+    )
 
     def length_of(example):
         texts = (
@@ -145,8 +148,14 @@ def load_summarization_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset(finetune_task_name)
-
+    raw_datasets = datasets.load_dataset(
+        finetune_task_name,
+        name=(
+            "3.0.0"
+            if finetune_task_name == SummarizationTaskName.CNN_DAILYMAIL
+            else None
+        ),
+    )
     text_key, summary_key = SUMMARIZATION_TASK_TO_KEYS[finetune_task_name]
 
     def length_of(example):

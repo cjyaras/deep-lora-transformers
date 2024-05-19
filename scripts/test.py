@@ -1,13 +1,5 @@
-import json
-import os
-
-import datasets
-import matplotlib.pyplot as plt
-import numpy as np
-
-import configs
-import models
-from finetune import finetune
+from dlt import configs
+from dlt.finetune import finetune
 
 task_config = configs.TaskConfig()
 
@@ -24,8 +16,8 @@ task_config.pretrain_model = configs.ModelType.BART
 # XGLUE = "xglue"
 # XSUM = "xsum"
 # WIKI_SUMMARY = "wiki_summary"
-task_config.finetune_task_name = configs.SummarizationTaskName.WIKI_SUMMARY
-task_config.max_seq_length = (128, 32)
+task_config.finetune_task_name = configs.SummarizationTaskName.CNN_DAILYMAIL
+task_config.max_seq_length = (512, 128)
 task_config.lora_adapt_type = configs.LoraAdaptType.ONLY_QUERY_VALUE
 
 

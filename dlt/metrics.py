@@ -8,7 +8,7 @@ import optax
 import transformers
 from jax import Array
 
-from configs import GlueTaskName, ModelType
+from .configs import GlueTaskName, ModelType
 
 try:
     nltk.data.find("tokenizers/punkt")

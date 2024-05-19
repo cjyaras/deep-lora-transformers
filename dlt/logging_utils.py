@@ -6,7 +6,7 @@ import orbax.checkpoint as ocp
 from chex import ArrayTree
 from flax.metrics.tensorboard import SummaryWriter
 
-from configs import TaskConfig
+from .configs import TaskConfig
 
 
 def write_train_metric(
