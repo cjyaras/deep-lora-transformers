@@ -67,3 +67,15 @@ def plot_series(
     ax.view_init(elev, azim, roll)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+
+def smooth(scalars, weight):
+    "Exponential moving average."
+    last = scalars[0]
+    smoothed = list()
+    for point in scalars:
+        smoothed_val = last * weight + (1 - weight) * point
+        smoothed.append(smoothed_val)
+        last = smoothed_val
+
+    return smoothed

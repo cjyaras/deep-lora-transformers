@@ -10,6 +10,7 @@ name = "dlt"
 version = "0.0.1"
 dependencies = [
     "dataclasses-json",
+    "scikit-learn",
     "jax[cpu];platform_system=='Darwin'",
     "jax[cuda12];platform_system=='Linux'",
     "transformers",

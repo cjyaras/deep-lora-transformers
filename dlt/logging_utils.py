@@ -40,26 +40,40 @@ def write_eval_metric(
         summary_writer.scalar(f"eval_{metric_name}", value, step)
 
 
-class Checkpointer:
+class _Checkpointer:
 
     def __init__(self, experiment_path: str):
-        self.ckpt_dir = os.path.join(experiment_path, "checkpoints")
-        self.options = ocp.CheckpointManagerOptions()
+        ckpt_dir = os.path.join(experiment_path, "checkpoints")
+        options = ocp.CheckpointManagerOptions(enable_async_checkpointing=True)
+        self.manager = ocp.CheckpointManager(ckpt_dir, options=options)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.manager.wait_until_finished()
+        self.manager.close()
 
     def save(self, step: int, lora_params: ArrayTree):
-        manager = ocp.CheckpointManager(self.ckpt_dir, options=self.options)
-        manager.save(step, args=ocp.args.StandardSave(lora_params))  # type: ignore
-        manager.wait_until_finished()
-        manager.close()
+        self.manager.save(step, args=ocp.args.StandardSave(lora_params))  # type: ignore
 
-    def load(self, step: int):
-        manager = ocp.CheckpointManager(self.ckpt_dir, options=self.options)
-        lora_params = manager.restore(step)
-        manager.close()
+    def load(self, step: int) -> ArrayTree:
+        lora_params = self.manager.restore(step)
         return lora_params
 
 
 def save_lora_params(experiment_path: str, step: int, lora_params: ArrayTree):
+    with _Checkpointer(experiment_path) as checkpointer:
+        checkpointer.save(step, lora_params)
+
+
+def load_lora_params(experiment_path: str, step: int) -> ArrayTree:
+    with _Checkpointer(experiment_path) as checkpointer:
+        lora_params = checkpointer.load(step)
+    return lora_params
+
+
+def save_lora_params_old(experiment_path: str, step: int, lora_params: ArrayTree):
     "Old function to save lora params. Use Checkpointer instead."
     flax.training.checkpoints.save_checkpoint(
         ckpt_dir=os.path.join(
@@ -72,7 +86,7 @@ def save_lora_params(experiment_path: str, step: int, lora_params: ArrayTree):
     )
 
 
-def load_lora_params(experiment_path: str, step: int):
+def load_lora_params_old(experiment_path: str, step: int):
     "Old function to load lora params. Use Checkpointer instead."
     return flax.training.checkpoints.restore_checkpoint(
         os.path.join(

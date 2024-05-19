@@ -1,10 +1,11 @@
+import json
 import os
 from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dlt import configs, logging_utils, models, plot_utils
+from dlt import configs, logging_utils, misc_utils, models, plot_utils
 from dlt.finetune import finetune
 
 task_config = configs.TaskConfig()
@@ -42,13 +43,12 @@ except FileExistsError:
 
 experiment_path = logging_utils.get_experiment_path(task_config, seed=0)
 
-task_config = logging_utils.get_task_config_from_json(experiment_path=experiment_path)
 model_params = models.create_pretrain_model_from_config(task_config).params  # type: ignore
 lora_model = models.create_lora_model_from_config(task_config, model_params)
-final_lora_params = logging_utils.Checkpointer(experiment_path).load(
-    task_config.num_train_steps
+final_lora_params = logging_utils.load_lora_params(
+    experiment_path, task_config.num_train_steps
 )
-final_e2e = lora_model.apply({"params": final_lora_params})
+final_e2e = lora_model.apply({"params": final_lora_params})  # type: ignore
 final_e2e = cast(dict, final_e2e)
 sv_vals_dict = {}
 for k, v in final_e2e.items():
@@ -66,3 +66,70 @@ ax.set_yticks([])
 fig.savefig(
     os.path.join("../figures", "final_spectra.png"), dpi=500, bbox_inches="tight"
 )
+
+
+rank = 8
+step_vals = np.array(task_config.save_step_points)
+flat_param_paths = lora_model.flat_params_shape_dict.keys()
+subspace_vals_dict = {k: [] for k in flat_param_paths}
+
+for step in step_vals:
+    print(f"Loading step {step}")
+    lora_params = logging_utils.load_lora_params(experiment_path, step)
+    e2e = lora_model.apply({"params": lora_params})  # type: ignore
+    e2e = cast(dict, e2e)
+
+    for k, v in e2e.items():
+        U, _, VT = np.linalg.svd(v)
+        V = VT.T
+        Ur, Vr = U[:, :rank], V[:, :rank]
+        subspace_vals_dict[k].append((Ur, Vr))
+
+side = "left"
+cosine_angle_vals_dict = {k: [] for k in subspace_vals_dict.keys()}
+for k, v in subspace_vals_dict.items():
+    Ur_final, Vr_final = v[-1]
+    for Ur, Vr in v:
+        if side == "left":
+            cosine_angle_vals_dict[k].append(misc_utils.cosine_angle(Ur, Ur_final))
+        elif side == "right":
+            cosine_angle_vals_dict[k].append(misc_utils.cosine_angle(Vr, Vr_final))
+        else:
+            raise ValueError(f"Invalid side {side}")
+
+series = np.array(list(cosine_angle_vals_dict.values()))
+filtered_series = series[series[:, 4] > 0.5]
+fig = plt.figure()
+ax = fig.add_subplot(111, projection="3d")
+plot_utils.plot_series(
+    ax,
+    filtered_series,
+    color="plasma",
+    y_points=step_vals,
+    zoom=0.8,
+    elev=30,
+    azim=-130,
+    roll=0,
+    linewidth=2.0,
+    alpha=1.0,
+)
+ax.set_xticks(np.linspace(0, task_config.num_train_steps, 5, dtype=int))
+ax.set_xlabel("\nIteration", fontsize=14)
+ax.set_ylabel("Adapted Layer", fontsize=14)
+ax.set_yticks([])
+ax.set_zlabel("Cosine Angle", fontsize=14)  # type: ignore
+fig.savefig(
+    os.path.join("../figures", "cosine_angle_traj.png"), dpi=500, bbox_inches="tight"
+)
+
+with open(os.path.join(experiment_path, "results.json")) as f:
+    results = json.load(f)
+step_vals, loss_vals = list(
+    zip(*[(pair["step"], pair["value"]) for pair in results["train_loss"]])
+)
+
+plt.plot(step_vals, plot_utils.smooth(loss_vals, 0.9))
+plt.xlabel("Iteration", fontsize=20)
+plt.ylabel("Train Loss", fontsize=20)
+plt.ylim([0, 2])
+plt.savefig(os.path.join("../figures", "train_loss.png"), dpi=500, bbox_inches="tight")
