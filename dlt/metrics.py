@@ -29,6 +29,18 @@ def mse_loss(logits: Array, labels: np.ndarray):
     return jnp.mean((logits[..., 0] - labels) ** 2)
 
 
+GLUE_METRIC_DICT = {
+    "cola": "eval_matthews_correlation",
+    "sst2": "eval_accuracy",
+    "stsb": "eval_pearson",
+    "qqp": "eval_accuracy",
+    "mrpc": "eval_accuracy",
+    "mnli": "eval_accuracy",
+    "qnli": "eval_accuracy",
+    "rte": "eval_accuracy",
+}
+
+
 class GlueEvalMetric:
 
     def __init__(self, finetune_task_name: GlueTaskName):
