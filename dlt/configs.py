@@ -73,7 +73,7 @@ class TaskConfig:
     # Logging hparams
     log_eval_steps: int = 200
     save_step_points: list = field(default_factory=list)
-    save_dir: str = "experiments"
+    save_dir: str = "../checkpoints"
 
     def __post_init__(self):
         if self.task_type == TaskType.GLUE:

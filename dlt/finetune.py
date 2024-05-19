@@ -10,8 +10,6 @@ import transformers
 
 from . import configs, data, data_utils, logging_utils, metrics, models, train
 
-experiment_dir = os.path.join(os.getcwd(), "experiments")
-
 
 def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
     assert len(seeds) >= 1, "Need at least one seed"
