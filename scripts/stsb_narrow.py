@@ -9,39 +9,36 @@ def common_config():
     task_config.train_batch_size = 16
     task_config.max_seq_length = 128
     task_config.lora_init_scale = 1e-3
-    task_config.num_train_steps = 400
+    task_config.num_train_steps = 200
     task_config.log_eval_steps = 20
     task_config.decay_ratio = 1.0
-    task_config.lora_gamma = 1e-2
+    task_config.lora_depth = 3
+    task_config.lora_gamma = 0.01
     task_config.lora_adapt_type = configs.LoraAdaptType.ALL_DENSE
+    task_config.save_dir = f"../checkpoints/stsb_fewshot_16_narrow_vs_wide"
     return task_config
 
 
-def run_experiments(rank, depth, seeds, learning_rate):
+def run_experiments(rank, seeds, compress, random, learning_rate):
     task_config = common_config()
-    task_config.lora_depth = depth
     task_config.lora_rank = rank
-    task_config.lora_compress = False
+    task_config.lora_compress = compress
+    task_config.lora_random_factors = random
     task_config.learning_rate = learning_rate
-    task_config.save_dir = f"../checkpoints/stsb_fewshot_16_varying_rank/{rank}"
     finetune(task_config, seeds)
 
 
 def main():
-    seeds = range(5)
-    for rank in [8, 16, 32, 64]:
-        run_experiments(
-            rank=rank,
-            depth=2,
-            seeds=seeds,
-            learning_rate=1e-4,
-        )
-        run_experiments(
-            rank=rank,
-            depth=3,
-            seeds=seeds,
-            learning_rate=1e-4,
-        )
+    seeds = [0]
+    run_experiments(
+        rank=None, seeds=seeds, compress=False, random=False, learning_rate=1e-4
+    )
+    run_experiments(
+        rank=8, seeds=seeds, compress=False, random=False, learning_rate=1e-4
+    )
+    run_experiments(
+        rank=8, seeds=seeds, compress=True, random=False, learning_rate=1e-2
+    )
 
 
 if __name__ == "__main__":

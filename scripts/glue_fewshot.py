@@ -29,6 +29,10 @@ def run_experiments(finetune_task_name, depth, rank, learning_rate, seeds):
     finetune(task_config, seeds)
 
 
+def get_results():
+    pass
+
+
 def main():
     seeds = np.arange(10)
     for finetune_task_name in list(GLUE_TASK_TO_KEYS.keys()):
