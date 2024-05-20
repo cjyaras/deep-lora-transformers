@@ -1,6 +1,9 @@
+import json
+import os
+
 import numpy as np
 
-from dlt import configs
+from dlt import configs, metrics
 from dlt.data import GLUE_TASK_TO_KEYS
 from dlt.finetune import finetune
 
@@ -30,7 +33,43 @@ def run_experiments(finetune_task_name, depth, rank, learning_rate, seeds):
 
 
 def get_results():
-    pass
+    experiment_dir = "../checkpoints/glue_fewshot_1024"
+    tasks = os.listdir(experiment_dir)
+
+    diff_dict = {}
+    take_last = True
+
+    def get_seed(run):
+        return int(run.split("_")[-1].split("=")[1])
+
+    for task in sorted(tasks):
+        runs = [run for run in os.listdir(os.path.join(experiment_dir, task))]
+        runs_2 = [run for run in runs if "depth=2" in run]
+        runs_3 = [run for run in runs if "depth=3" in run]
+        runs_2_results = np.zeros(len(runs_2))
+        runs_3_results = np.zeros(len(runs_3))
+        for run in runs:
+            seed = get_seed(run)
+            with open(os.path.join(experiment_dir, task, run, "results.json")) as f:
+                results = json.load(f)
+            values = [
+                entry["value"]
+                for entry in sorted(
+                    results[metrics.GLUE_METRIC_DICT[task]], key=lambda x: x["step"]
+                )
+            ]
+            if "depth=2" in run:
+                runs_2_results[seed] = values[-1] if take_last else max(values)
+            elif "depth=3" in run:
+                runs_3_results[seed] = values[-1] if take_last else max(values)
+        diff_dict[task] = runs_3_results - runs_2_results
+
+    labels, series = list(zip(*diff_dict.items()))
+    labels = list(labels)
+    series = list(series)
+    series.append(np.array(series).reshape(-1))
+    labels.append("overall")
+    return series, labels
 
 
 def main():
@@ -54,3 +93,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    results, labels = get_results()
+    for series, tag in zip(results, labels):
+        print(tag, np.mean(series), np.var(series))
