@@ -47,7 +47,8 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         print(experiment_path)
 
         if os.path.exists(experiment_path):
-            raise FileExistsError(f"Experiment {experiment_path} already exists.")
+            print(f"Experiment {experiment_path} already exists.")
+            continue
 
         summary_writer = flax.metrics.tensorboard.SummaryWriter(experiment_path)
 

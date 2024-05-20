@@ -36,11 +36,8 @@ task_config.save_step_points = [
 ]
 task_config.identifier = "intro"
 
-try:
-    finetune(task_config, seeds=[0])
-except FileExistsError:
-    print("Experiment already ran. Loading the model.")
 
+finetune(task_config, seeds=[0])
 experiment_path = logging_utils.get_experiment_path(task_config, seed=0)
 
 ## Left figure

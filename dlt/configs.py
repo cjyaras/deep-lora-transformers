@@ -76,6 +76,7 @@ class TaskConfig:
     save_dir: str = "../checkpoints"
 
     def __post_init__(self):
+
         if self.task_type == TaskType.GLUE:
             assert isinstance(self.finetune_task_name, GlueTaskName)
             assert self.pretrain_model == ModelType.BERT

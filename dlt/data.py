@@ -240,6 +240,7 @@ def create_train_iterator(
     if len(dataset) == batch_size:
         # If dataset size is equal to batch size, then we can just return the dataset as a batch.
         batch = dataset[:]
+        batch = {k: np.array(v) for k, v in batch.items()}
 
         while True:
             yield batch
