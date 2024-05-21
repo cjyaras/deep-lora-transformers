@@ -37,8 +37,28 @@ BART_ATTENTION_MLP = [
     "fc1/kernel",
     "fc2/kernel",
 ]
+T5_ONLY_QUERY_VALUE = [
+    "EncDecAttention/q/kernel",
+    "EncDecAttention/v/kernel",
+    "SelfAttention/q/kernel",
+    "SelfAttention/v/kernel",
+]
+T5_ATTENTION_MLP = [
+    "EncDecAttention/q/kernel",
+    "EncDecAttention/k/kernel",
+    "EncDecAttention/v/kernel",
+    "EncDecAttention/o/kernel",
+    "SelfAttention/q/kernel",
+    "SelfAttention/k/kernel",
+    "SelfAttention/v/kernel",
+    "SelfAttention/o/kernel",
+    "DenseReluDense/wi/kernel",
+    "DenseReluDense/wo/kernel",
+]
 
-MODEL_DIMS = 768
+BERT_MODEL_DIMS = 768
+BART_MODEL_DIMS = 768
+T5_MODEL_DIMS = 512
 
 
 def is_path_valid(path: str, valid_list: list) -> bool:
@@ -54,14 +74,17 @@ def get_filtered_flat_params_shape_dict(
     flat_params_shape_dict = jax.tree_util.tree_map(jnp.shape, flat_params)
     if lora_adapt_type == LoraAdaptType.ONLY_QUERY_VALUE:
         filter_fn = lambda flat_path, _: is_path_valid(
-            flat_path, BERT_ONLY_QUERY_VALUE + BART_ONLY_QUERY_VALUE
+            flat_path,
+            BERT_ONLY_QUERY_VALUE + BART_ONLY_QUERY_VALUE + T5_ONLY_QUERY_VALUE,
         )
     elif lora_adapt_type == LoraAdaptType.ATTENTION_MLP:
         filter_fn = lambda flat_path, _: is_path_valid(
-            flat_path, BERT_ATTENTION_MLP + BART_ATTENTION_MLP
+            flat_path, BERT_ATTENTION_MLP + BART_ATTENTION_MLP + T5_ATTENTION_MLP
         )
     else:
-        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= MODEL_DIMS
+        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= min(
+            BERT_MODEL_DIMS, BART_MODEL_DIMS, T5_MODEL_DIMS
+        )
     return {
         name: shape
         for name, shape in flat_params_shape_dict.items()

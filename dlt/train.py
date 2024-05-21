@@ -14,12 +14,12 @@ from tqdm.auto import tqdm
 from transformers import (
     FlaxAutoModel,
     FlaxBartForConditionalGeneration,
+    FlaxT5ForConditionalGeneration,
     GenerationConfig,
 )
 
 from . import metrics, model_utils, models
 from .configs import TaskConfig, TaskType
-from .data import BART_DECODER_START_TOKEN_ID
 from .models import Lora
 
 
@@ -157,9 +157,9 @@ def create_eval_step_fn(task_config: TaskConfig):
 
 def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Callable:
 
-    assert isinstance(
-        model, FlaxBartForConditionalGeneration
-    ), "Only BART supports decoding."
+    assert isinstance(model, FlaxBartForConditionalGeneration) or isinstance(
+        model, FlaxT5ForConditionalGeneration
+    ), "Only BART or T5 support decoding."
     assert isinstance(
         task_config.max_seq_length, Tuple
     ), "Tuple expected for max_seq_length."
@@ -169,8 +169,8 @@ def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Call
 
     gen_kwargs = {
         "max_length": task_config.max_seq_length[1],
-        "num_beams": 1,
-        "decoder_start_token_id": BART_DECODER_START_TOKEN_ID,
+        "num_beams": 4,
+        "decoder_start_token_id": model._get_decoder_start_token_id(),
     }
 
     @jax.jit

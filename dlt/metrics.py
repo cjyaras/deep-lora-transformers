@@ -59,9 +59,10 @@ class GlueEvalMetric:
 class SummarizationEvalMetric:
 
     def __init__(self, pretrain_model: ModelType):
-        assert (
-            pretrain_model == ModelType.BART
-        ), "Only BART is supported for summarization"
+        assert pretrain_model in [
+            ModelType.BART,
+            ModelType.T5,
+        ], "Only BART or T5 are supported for summarization"
         self.eval_metric = evaluate.load("rouge")
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(pretrain_model)
 

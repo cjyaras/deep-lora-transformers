@@ -7,8 +7,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import transformers
-from datasets import VerificationMode
 from datasets.arrow_dataset import Dataset
+from transformers import PretrainedConfig, T5Config
 
 from . import data_utils
 from .configs import GlueTaskName, SummarizationTaskName, TaskConfig, TaskType
@@ -40,12 +40,12 @@ SUMMARIZATION_TASK_TO_KEYS = {
     "wiki_summary": ("article", "highlights"),
 }
 
-BART_PAD_TOKEN_ID = 1
-BART_DECODER_START_TOKEN_ID = 2
+# BART_PAD_TOKEN_ID = 1
+# BART_DECODER_START_TOKEN_ID = 2
 
 
 def load_dataset_from_config(
-    task_config: TaskConfig, sample_seed: int
+    task_config: TaskConfig, model_config: PretrainedConfig, sample_seed: int
 ) -> Tuple[Dataset, Dataset]:
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
 
@@ -64,6 +64,7 @@ def load_dataset_from_config(
         assert isinstance(task_config.max_seq_length, Tuple)
         train_dataset, eval_dataset = load_summarization_dataset(
             task_config.finetune_task_name,  # type: ignore
+            model_config,
             tokenizer,
             task_config.max_seq_length,
             task_config.num_train_samples,
@@ -82,9 +83,7 @@ def load_glue_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset(
-        "nyu-mll/glue", finetune_task_name, verification_mode=VerificationMode.NO_CHECKS
-    )
+    raw_datasets = datasets.load_dataset("nyu-mll/glue", finetune_task_name)
 
     def length_of(example):
         texts = (
@@ -142,6 +141,7 @@ def load_glue_dataset(
 
 def load_summarization_dataset(
     finetune_task_name: SummarizationTaskName,
+    model_config: PretrainedConfig,
     tokenizer: transformers.PreTrainedTokenizerBase,
     max_seq_length: Optional[Tuple[int, int]],
     num_train_samples: Optional[int],
@@ -188,6 +188,9 @@ def load_summarization_dataset(
         inputs = example[text_key]
         targets = example[summary_key]
 
+        if isinstance(model_config, T5Config):
+            inputs = "summarize: " + inputs
+
         model_inputs = tokenizer(
             inputs,
             max_length=max_source_length,
@@ -207,8 +210,8 @@ def load_summarization_dataset(
         model_inputs["labels"] = labels["input_ids"]
         decoder_input_ids = data_utils.shift_tokens_right(
             labels["input_ids"],  # type: ignore
-            BART_PAD_TOKEN_ID,
-            BART_DECODER_START_TOKEN_ID,
+            model_config.pad_token_id,
+            model_config.decoder_start_token_id,
         )
         model_inputs["decoder_input_ids"] = decoder_input_ids
         model_inputs["decoder_attention_mask"] = labels["attention_mask"]

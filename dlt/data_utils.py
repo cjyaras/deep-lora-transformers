@@ -13,7 +13,9 @@ def shift_tokens_right(
     shifted_input_ids[:, 0] = decoder_start_token_id
 
     # replace possible -100 values in labels by `pad_token_id`
-    shifted_input_ids[shifted_input_ids == -100] = pad_token_id
+    shifted_input_ids = np.where(
+        shifted_input_ids != -100, shifted_input_ids, pad_token_id
+    )
 
     return shifted_input_ids
 

@@ -15,6 +15,7 @@ class ExtendedEnum(StrEnum):
 class ModelType(ExtendedEnum):
     BERT = "bert-base-cased"
     BART = "facebook/bart-base"
+    T5 = "google-t5/t5-small"
 
 
 class TaskType(ExtendedEnum):
@@ -89,7 +90,7 @@ class TaskConfig:
             assert isinstance(self.max_seq_length, int)
         elif self.task_type == TaskType.SUMMARIZATION:
             assert self.finetune_task_name in SummarizationTaskName.values()
-            assert self.pretrain_model == ModelType.BART
+            assert self.pretrain_model in [ModelType.BART, ModelType.T5]
             assert isinstance(self.max_seq_length, Tuple)
         else:
             raise ValueError(f"Invalid task_type: {self.task_type}")

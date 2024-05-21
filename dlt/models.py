@@ -10,6 +10,7 @@ from transformers import (
     FlaxAutoModel,
     FlaxAutoModelForSeq2SeqLM,
     FlaxAutoModelForSequenceClassification,
+    PretrainedConfig,
 )
 
 from . import misc_utils, model_utils
@@ -150,21 +151,25 @@ GLUE_TASK_TO_NUM_LABELS = {
 }
 
 
-def create_pretrain_model_from_config(
-    task_config: TaskConfig,
-) -> FlaxAutoModel:
-    "Creates transformer model from task config."
-
+def create_pretrain_config_from_config(task_config: TaskConfig) -> PretrainedConfig:
     config = AutoConfig.from_pretrained(
         task_config.pretrain_model,
         num_labels=GLUE_TASK_TO_NUM_LABELS.get(task_config.finetune_task_name, 1),
     )
+    return config
+
+
+def create_pretrain_model_from_config(
+    pretrain_model: ModelType,
+    model_config: PretrainedConfig,
+) -> FlaxAutoModel:
+    "Creates transformer model from task config."
 
     model = (
         FlaxAutoModelForSequenceClassification
-        if task_config.pretrain_model == ModelType.BERT
+        if pretrain_model == ModelType.BERT
         else FlaxAutoModelForSeq2SeqLM
-    ).from_pretrained(task_config.pretrain_model, config=config)
+    ).from_pretrained(pretrain_model, config=model_config)
 
     return model
 

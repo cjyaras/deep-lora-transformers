@@ -15,7 +15,10 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
     assert len(seeds) >= 1, "Need at least one seed"
 
     # Model
-    pretrain_model = models.create_pretrain_model_from_config(task_config)
+    model_config = models.create_pretrain_config_from_config(task_config)
+    pretrain_model = models.create_pretrain_model_from_config(
+        task_config.pretrain_model, model_config
+    )
 
     learning_rate_fn = train.create_learning_rate_fn(
         task_config.num_train_steps,
@@ -39,7 +42,9 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
     ), "Tensorboard is required for logging but is not installed."
 
     for seed in seeds:
-        train_dataset, eval_dataset = data.load_dataset_from_config(task_config, seed)
+        train_dataset, eval_dataset = data.load_dataset_from_config(
+            task_config, model_config, seed
+        )
         rng = jax.random.PRNGKey(seed)
         lora_rng, rng = jax.random.split(rng)
 
