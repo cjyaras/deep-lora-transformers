@@ -21,6 +21,7 @@ dependencies = [
     "matplotlib",
     "tensorflow",
     "rouge_score",
+    "py7zr",
     "tf-keras",
     "seaborn",
 ]

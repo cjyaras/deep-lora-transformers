@@ -5,23 +5,30 @@ from typing import Optional, Tuple, Union
 from dataclasses_json import dataclass_json
 
 
-class ModelType(StrEnum):
+class ExtendedEnum(StrEnum):
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
+
+
+class ModelType(ExtendedEnum):
     BERT = "bert-base-cased"
     BART = "facebook/bart-base"
 
 
-class TaskType(StrEnum):
+class TaskType(ExtendedEnum):
     GLUE = "glue"
     SUMMARIZATION = "summarization"
 
 
-class LoraAdaptType(StrEnum):
+class LoraAdaptType(ExtendedEnum):
     ONLY_QUERY_VALUE = "only-query-value"
     ATTENTION_MLP = "attention-mlp"
     ALL_DENSE = "all-dense"
 
 
-class GlueTaskName(StrEnum):
+class GlueTaskName(ExtendedEnum):
     COLA = "cola"
     MNLI = "mnli"
     MRPC = "mrpc"
@@ -32,7 +39,7 @@ class GlueTaskName(StrEnum):
     STSB = "stsb"
 
 
-class SummarizationTaskName(StrEnum):
+class SummarizationTaskName(ExtendedEnum):
     CNN_DAILYMAIL = "cnn_dailymail"
     SAMSUM = "samsum"
     XSUM = "xsum"
@@ -76,13 +83,12 @@ class TaskConfig:
     save_dir: str = "../checkpoints"
 
     def __post_init__(self):
-
         if self.task_type == TaskType.GLUE:
-            assert isinstance(self.finetune_task_name, GlueTaskName)
+            assert self.finetune_task_name in GlueTaskName.values()
             assert self.pretrain_model == ModelType.BERT
             assert isinstance(self.max_seq_length, int)
         elif self.task_type == TaskType.SUMMARIZATION:
-            assert isinstance(self.finetune_task_name, SummarizationTaskName)
+            assert self.finetune_task_name in SummarizationTaskName.values()
             assert self.pretrain_model == ModelType.BART
             assert isinstance(self.max_seq_length, Tuple)
         else:

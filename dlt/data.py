@@ -50,20 +50,20 @@ def load_dataset_from_config(
     tokenizer = transformers.AutoTokenizer.from_pretrained(task_config.pretrain_model)
 
     if task_config.task_type == TaskType.GLUE:
-        assert isinstance(task_config.finetune_task_name, GlueTaskName)
+        assert task_config.finetune_task_name in GlueTaskName.values()
         assert isinstance(task_config.max_seq_length, int)
         train_dataset, eval_dataset = load_glue_dataset(
-            task_config.finetune_task_name,
+            task_config.finetune_task_name,  # type: ignore
             tokenizer,
             task_config.max_seq_length,
             task_config.num_train_samples,
             sample_seed,
         )
     elif task_config.task_type == TaskType.SUMMARIZATION:
-        assert isinstance(task_config.finetune_task_name, SummarizationTaskName)
+        assert task_config.finetune_task_name in SummarizationTaskName.values()
         assert isinstance(task_config.max_seq_length, Tuple)
         train_dataset, eval_dataset = load_summarization_dataset(
-            task_config.finetune_task_name,
+            task_config.finetune_task_name,  # type: ignore
             tokenizer,
             task_config.max_seq_length,
             task_config.num_train_samples,
@@ -173,7 +173,7 @@ def load_summarization_dataset(
         return text_length <= max_source_length and summary_length <= max_target_length
 
     for k, v in raw_datasets.items():  # type: ignore
-        raw_datasets[k] = v.filter(keep_fn)  # type: ignore
+        raw_datasets[k] = v.filter(keep_fn, num_proc=10)  # type: ignore
 
     if num_train_samples is not None:
         raw_datasets["train"] = raw_datasets["train"].select(  # type: ignore

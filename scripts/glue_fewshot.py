@@ -4,7 +4,6 @@ import os
 import numpy as np
 
 from dlt import configs, metrics
-from dlt.data import GLUE_TASK_TO_KEYS
 from dlt.finetune import finetune
 
 
@@ -74,7 +73,7 @@ def get_results():
 
 def main():
     seeds = np.arange(10)
-    for finetune_task_name in list(GLUE_TASK_TO_KEYS.keys()):
+    for finetune_task_name in configs.GlueTaskName.values():
         run_experiments(
             finetune_task_name,
             depth=2,

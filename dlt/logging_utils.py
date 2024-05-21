@@ -65,12 +65,14 @@ class _Checkpointer:
 
 
 def save_lora_params(experiment_path: str, step: int, lora_params: ArrayTree):
-    with _Checkpointer(experiment_path) as checkpointer:
+    absolute_experiment_path = os.path.abspath(experiment_path)
+    with _Checkpointer(absolute_experiment_path) as checkpointer:
         checkpointer.save(step, lora_params)
 
 
 def load_lora_params(experiment_path: str, step: int) -> ArrayTree:
-    with _Checkpointer(experiment_path) as checkpointer:
+    absolute_experiment_path = os.path.abspath(experiment_path)
+    with _Checkpointer(absolute_experiment_path) as checkpointer:
         lora_params = checkpointer.load(step)
     return lora_params
 
@@ -101,7 +103,7 @@ def load_lora_params_old(experiment_path: str, step: int):
 
 def get_task_config_from_json(experiment_path: str):
     with open(os.path.join(experiment_path, "config.json"), "r") as f:
-        return configs.TaskConfig.from_json(f.read())  # type: ignore
+        return TaskConfig.from_json(f.read())  # type: ignore
 
 
 def get_experiment_name(task_config: TaskConfig, seed: int):

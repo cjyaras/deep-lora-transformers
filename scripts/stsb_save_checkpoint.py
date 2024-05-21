@@ -1,7 +1,9 @@
 import os
 
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+from tqdm.auto import tqdm
 
 from dlt import configs, logging_utils, models
 from dlt.finetune import finetune
@@ -77,8 +79,8 @@ def get_results():
 def plot_results():
     run_2_ranks, run_3_ranks = get_results()
     fig, ax = plt.subplots()
-    sns.histplot(run_2_ranks, ax=ax, color="orange")
-    sns.histplot(run_3_ranks, ax=ax, color="blue")
+    sns.histplot(run_2_ranks, ax=ax, color="orange", discrete=True)
+    sns.histplot(run_3_ranks, ax=ax, color="blue", discrete=True)
     ax.set_xlabel("Rank", fontsize=12)
     ax.set_ylabel("Count", fontsize=12)
     ax.legend(["Vanilla LoRA", "Deep LoRA"], fontsize=16)
