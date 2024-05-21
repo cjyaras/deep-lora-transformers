@@ -7,7 +7,7 @@ from dlt.finetune import finetune
 def common_config(num_train_steps):
     task_config = configs.TaskConfig()
     task_config.task_type = configs.TaskType.SUMMARIZATION
-    task_config.pretrain_model = configs.ModelType.BART
+    task_config.pretrain_model = configs.ModelType.T5
     task_config.num_train_samples = 64
     task_config.train_batch_size = 16
     task_config.eval_batch_size = 32
@@ -17,7 +17,7 @@ def common_config(num_train_steps):
     task_config.log_eval_steps = num_train_steps
     # task_config.log_eval_steps = 1
     task_config.decay_ratio = 1.0
-    task_config.lora_adapt_type = configs.LoraAdaptType.ALL_DENSE
+    task_config.lora_adapt_type = configs.LoraAdaptType.ONLY_QUERY_VALUE
     return task_config
 
 
@@ -38,14 +38,14 @@ def main():
         run_experiments(
             finetune_task_name,
             depth=2,
-            rank=8,
+            rank=64,
             learning_rate=1e-4,
             seeds=seeds,
         )
         run_experiments(
             finetune_task_name,
             depth=3,
-            rank=None,
+            rank=64,
             learning_rate=1e-4,
             seeds=seeds,
         )

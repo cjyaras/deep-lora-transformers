@@ -189,7 +189,7 @@ def load_summarization_dataset(
         targets = example[summary_key]
 
         if isinstance(model_config, T5Config):
-            inputs = "summarize: " + inputs
+            inputs = ["summarize: " + x for x in inputs]
 
         model_inputs = tokenizer(
             inputs,
