@@ -14,13 +14,12 @@ class ExtendedEnum(StrEnum):
 
 class ModelType(ExtendedEnum):
     BERT = "google-bert/bert-base-cased"
-    T5 = "google-t5/t5-small"
-    # GPT = "openai-community/gpt2-medium"
+    T5 = "google-t5/t5-base"
 
 
 class TaskType(ExtendedEnum):
     GLUE = "glue"
-    E2E_NLG = "e2e_nlg"
+    NLG = "nlg"
 
 
 class LoraAdaptType(ExtendedEnum):
@@ -40,7 +39,7 @@ class GlueTaskName(ExtendedEnum):
     STSB = "stsb"
 
 
-class E2ENLGTaskName(ExtendedEnum):
+class NLGTaskName(ExtendedEnum):
     E2E_NLG = "e2e_nlg"
 
 
@@ -51,7 +50,7 @@ class TaskConfig:
 
     # Data hparams
     task_type: TaskType = TaskType.GLUE
-    finetune_task_name: Union[GlueTaskName, E2ENLGTaskName] = GlueTaskName.STSB
+    finetune_task_name: Union[GlueTaskName, NLGTaskName] = GlueTaskName.STSB
     max_seq_length: Union[int, Tuple[int, int]] = 128
     num_train_samples: Optional[int] = None
 

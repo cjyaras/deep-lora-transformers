@@ -40,6 +40,8 @@ GLUE_METRIC_DICT = {
     "rte": "eval_accuracy",
 }
 
+NLG_METRIC_LIST = ["eval_bleu", "eval_rougeL", "eval_meteor"]
+
 
 class GlueEvalMetric:
 
@@ -59,7 +61,7 @@ class GlueEvalMetric:
 class NLGEvalMetric:
 
     def __init__(self, pretrain_model: ModelType):
-        self.eval_metric = evaluate.combine(["bleu", "rouge", "meteor", "nist_mt"])
+        self.eval_metric = evaluate.combine(["bleu", "rouge", "meteor"])
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(pretrain_model)
 
     @staticmethod
@@ -90,5 +92,6 @@ class NLGEvalMetric:
     def compute(self) -> Dict:
         result = self.eval_metric.compute()
         assert result is not None
+        result.pop("precisions")
         result = {k: round(v * 100, 2) for k, v in result.items()}
         return result

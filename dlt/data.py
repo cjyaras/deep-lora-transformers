@@ -11,7 +11,7 @@ from datasets.arrow_dataset import Dataset
 from transformers import PretrainedConfig, T5Config
 
 from . import data_utils
-from .configs import E2ENLGTaskName, GlueTaskName, TaskConfig, TaskType
+from .configs import GlueTaskName, NLGTaskName, TaskConfig, TaskType
 
 # Glue tasks
 GLUE_TASK_TO_KEYS = {
@@ -41,8 +41,8 @@ def load_dataset_from_config(
             task_config.num_train_samples,
             sample_seed,
         )
-    elif task_config.task_type == TaskType.E2E_NLG:
-        assert task_config.finetune_task_name in E2ENLGTaskName.values()
+    elif task_config.task_type == TaskType.NLG:
+        assert task_config.finetune_task_name in NLGTaskName.values()
         assert isinstance(task_config.max_seq_length, Tuple)
         train_dataset, eval_dataset = load_e2e_nlg_dataset(
             model_config,

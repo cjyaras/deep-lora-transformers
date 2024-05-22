@@ -157,15 +157,15 @@ def create_eval_step_fn(task_config: TaskConfig):
 
 def create_decode_step_fn(model: FlaxAutoModel, task_config: TaskConfig) -> Callable:
 
-    assert isinstance(model, FlaxBartForConditionalGeneration) or isinstance(
+    assert isinstance(
         model, FlaxT5ForConditionalGeneration
-    ), "Only BART or T5 support decoding."
+    ), "Only T5 supports decoding."
     assert isinstance(
         task_config.max_seq_length, Tuple
     ), "Tuple expected for max_seq_length."
     assert (
-        task_config.task_type == TaskType.SUMMARIZATION
-    ), "Only summarization supports decoding."
+        task_config.task_type == TaskType.NLG
+    ), "Only generation tasks supports decoding."
 
     gen_kwargs = {
         "max_length": task_config.max_seq_length[1],
@@ -251,8 +251,14 @@ def create_compressed_lora_train_state(
     )
 
     # Get gradient of uncompressed factors
-    grad_fn = jax.grad(create_loss_fn)(model_state, uncompressed_lora_state)
-    uncompressed_grads = grad_fn(uncompressed_lora_state.params, batch)
+    loss_fn = create_loss_fn(
+        model_state,
+        uncompressed_lora_state,
+        task_config.finetune_task_name != "stsb",
+        True,
+    )
+
+    uncompressed_grads = jax.grad(loss_fn)(uncompressed_lora_state.params, batch)
 
     # Move to numpy (do compression on CPU to save GPU memory)
     uncompressed_lora_params_numpy = jax.tree_map(
