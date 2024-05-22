@@ -19,24 +19,6 @@ BERT_ATTENTION_MLP = [
     "intermediate/dense/kernel",
     "output/dense/kernel",
 ]
-BART_ONLY_QUERY_VALUE = [
-    "encoder_attn/q_proj/kernel",
-    "encoder_attn/v_proj/kernel",
-    "self_attn/q_proj/kernel",
-    "self_attn/v_proj/kernel",
-]
-BART_ATTENTION_MLP = [
-    "encoder_attn/q_proj/kernel",
-    "encoder_attn/v_proj/kernel",
-    "encoder_attn/k_proj/kernel",
-    "encoder_attn/out_proj/kernel",
-    "self_attn/q_proj/kernel",
-    "self_attn/v_proj/kernel",
-    "self_attn/k_proj/kernel",
-    "self_attn/out_proj/kernel",
-    "fc1/kernel",
-    "fc2/kernel",
-]
 T5_ONLY_QUERY_VALUE = [
     "EncDecAttention/q/kernel",
     "EncDecAttention/v/kernel",
@@ -56,9 +38,7 @@ T5_ATTENTION_MLP = [
     "DenseReluDense/wo/kernel",
 ]
 
-BERT_MODEL_DIMS = 768
-BART_MODEL_DIMS = 768
-T5_MODEL_DIMS = 512
+MIN_DIMS = 512
 
 
 def is_path_valid(path: str, valid_list: list) -> bool:
@@ -75,16 +55,14 @@ def get_filtered_flat_params_shape_dict(
     if lora_adapt_type == LoraAdaptType.ONLY_QUERY_VALUE:
         filter_fn = lambda flat_path, _: is_path_valid(
             flat_path,
-            BERT_ONLY_QUERY_VALUE + BART_ONLY_QUERY_VALUE + T5_ONLY_QUERY_VALUE,
+            BERT_ONLY_QUERY_VALUE + T5_ONLY_QUERY_VALUE,
         )
     elif lora_adapt_type == LoraAdaptType.ATTENTION_MLP:
         filter_fn = lambda flat_path, _: is_path_valid(
-            flat_path, BERT_ATTENTION_MLP + BART_ATTENTION_MLP + T5_ATTENTION_MLP
+            flat_path, BERT_ATTENTION_MLP + T5_ATTENTION_MLP
         )
     else:
-        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= min(
-            BERT_MODEL_DIMS, BART_MODEL_DIMS, T5_MODEL_DIMS
-        )
+        filter_fn = lambda _, shape: len(shape) == 2 and min(shape) >= MIN_DIMS
     return {
         name: shape
         for name, shape in flat_params_shape_dict.items()

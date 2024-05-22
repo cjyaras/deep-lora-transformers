@@ -33,8 +33,8 @@ def finetune(task_config: configs.TaskConfig, seeds: list[int] = [0]):
         assert isinstance(task_config.finetune_task_name, configs.GlueTaskName)
         eval_metric = metrics.GlueEvalMetric(task_config.finetune_task_name)
         eval_step = train.create_eval_step_fn(task_config)
-    elif task_config.task_type == configs.TaskType.SUMMARIZATION:
-        eval_metric = metrics.SummarizationEvalMetric(task_config.pretrain_model)
+    elif task_config.task_type == configs.TaskType.E2E_NLG:
+        eval_metric = metrics.NLGEvalMetric(task_config.pretrain_model)
         eval_step = train.create_decode_step_fn(pretrain_model, task_config)
 
     assert (

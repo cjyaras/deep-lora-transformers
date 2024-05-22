@@ -14,15 +14,12 @@ class ExtendedEnum(StrEnum):
 
 class ModelType(ExtendedEnum):
     BERT = "google-bert/bert-base-cased"
-    # BART = "facebook/bart-base"
-    BART = "facebook/bart-large"
-    T5 = "google-t5/t5-base"
-    GPT = "openai-community/gpt2-medium"
+    T5 = "google-t5/t5-small"
+    # GPT = "openai-community/gpt2-medium"
 
 
 class TaskType(ExtendedEnum):
     GLUE = "glue"
-    SUMMARIZATION = "summarization"
     E2E_NLG = "e2e_nlg"
 
 
@@ -43,14 +40,8 @@ class GlueTaskName(ExtendedEnum):
     STSB = "stsb"
 
 
-class SummarizationTaskName(ExtendedEnum):
-    CNN_DAILYMAIL = "cnn_dailymail"
-    SAMSUM = "samsum"
-    XSUM = "xsum"
-
-
 class E2ENLGTaskName(ExtendedEnum):
-    E2ENLG = "e2enlg"
+    E2E_NLG = "e2e_nlg"
 
 
 @dataclass_json
@@ -60,9 +51,7 @@ class TaskConfig:
 
     # Data hparams
     task_type: TaskType = TaskType.GLUE
-    finetune_task_name: Union[GlueTaskName, SummarizationTaskName, E2ENLGTaskName] = (
-        GlueTaskName.STSB
-    )
+    finetune_task_name: Union[GlueTaskName, E2ENLGTaskName] = GlueTaskName.STSB
     max_seq_length: Union[int, Tuple[int, int]] = 128
     num_train_samples: Optional[int] = None
 
@@ -91,18 +80,3 @@ class TaskConfig:
     log_eval_steps: int = 200
     save_step_points: list = field(default_factory=list)
     save_dir: str = "../checkpoints"
-
-    def __post_init__(self):
-        if self.task_type == TaskType.GLUE:
-            assert self.finetune_task_name in GlueTaskName.values()
-            assert self.pretrain_model == ModelType.BERT
-            assert isinstance(self.max_seq_length, int)
-        elif self.task_type in [TaskType.SUMMARIZATION, TaskType.E2E_NLG]:
-            assert (
-                self.finetune_task_name
-                in SummarizationTaskName.values() + E2ENLGTaskName.values()
-            )
-            assert self.pretrain_model in [ModelType.BART, ModelType.T5, ModelType.GPT]
-            assert isinstance(self.max_seq_length, Tuple)
-        else:
-            raise ValueError(f"Invalid task_type: {self.task_type}")

@@ -11,7 +11,7 @@ from datasets.arrow_dataset import Dataset
 from transformers import PretrainedConfig, T5Config
 
 from . import data_utils
-from .configs import GlueTaskName, SummarizationTaskName, TaskConfig, TaskType
+from .configs import E2ENLGTaskName, GlueTaskName, TaskConfig, TaskType
 
 # Glue tasks
 GLUE_TASK_TO_KEYS = {
@@ -24,24 +24,6 @@ GLUE_TASK_TO_KEYS = {
     "sst2": ("sentence", None),
     "stsb": ("sentence1", "sentence2"),
 }
-
-# Summarization tasks
-SUMMARIZATION_TASK_TO_KEYS = {
-    "amazon_reviews_multi": ("review_body", "review_title"),
-    "big_patent": ("description", "abstract"),
-    "cnn_dailymail": ("article", "highlights"),
-    "orange_sum": ("text", "summary"),
-    "pn_summary": ("article", "summary"),
-    "psc": ("extract_text", "summary_text"),
-    "samsum": ("dialogue", "summary"),
-    "thaisum": ("body", "summary"),
-    "xglue": ("news_body", "news_title"),
-    "xsum": ("document", "summary"),
-    "wiki_summary": ("article", "highlights"),
-}
-
-# BART_PAD_TOKEN_ID = 1
-# BART_DECODER_START_TOKEN_ID = 2
 
 
 def load_dataset_from_config(
@@ -59,11 +41,10 @@ def load_dataset_from_config(
             task_config.num_train_samples,
             sample_seed,
         )
-    elif task_config.task_type == TaskType.SUMMARIZATION:
-        assert task_config.finetune_task_name in SummarizationTaskName.values()
+    elif task_config.task_type == TaskType.E2E_NLG:
+        assert task_config.finetune_task_name in E2ENLGTaskName.values()
         assert isinstance(task_config.max_seq_length, Tuple)
-        train_dataset, eval_dataset = load_summarization_dataset(
-            task_config.finetune_task_name,  # type: ignore
+        train_dataset, eval_dataset = load_e2e_nlg_dataset(
             model_config,
             tokenizer,
             task_config.max_seq_length,
@@ -139,8 +120,7 @@ def load_glue_dataset(
     return train_dataset, eval_dataset
 
 
-def load_summarization_dataset(
-    finetune_task_name: SummarizationTaskName,
+def load_e2e_nlg_dataset(
     model_config: PretrainedConfig,
     tokenizer: transformers.PreTrainedTokenizerBase,
     max_seq_length: Optional[Tuple[int, int]],
@@ -148,29 +128,23 @@ def load_summarization_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset(
-        finetune_task_name,
-        name=(
-            "3.0.0"
-            if finetune_task_name == SummarizationTaskName.CNN_DAILYMAIL
-            else None
-        ),
-    )
-    text_key, summary_key = SUMMARIZATION_TASK_TO_KEYS[finetune_task_name]
+    raw_datasets = datasets.load_dataset("GEM/e2e_nlg")
+    source_key = "meaning_representation"
+    target_key = "target"
 
     def length_of(example):
-        text, summary = example[text_key], example[summary_key]
-        return len(tokenizer(text)["input_ids"]), len(tokenizer(summary)["input_ids"])  # type: ignore
+        source, target = example[source_key], example[target_key]
+        return len(tokenizer(source)["input_ids"]), len(tokenizer(target)["input_ids"])  # type: ignore
 
     if max_seq_length is None:
-        max_source_length = 1024
-        max_target_length = 128
+        max_source_length = 64
+        max_target_length = 64
     else:
         max_source_length, max_target_length = max_seq_length
 
     def keep_fn(example):
-        text_length, summary_length = length_of(example)
-        return text_length <= max_source_length and summary_length <= max_target_length
+        source_length, target_length = length_of(example)
+        return source_length <= max_source_length and target_length <= max_target_length
 
     for k, v in raw_datasets.items():  # type: ignore
         raw_datasets[k] = v.filter(keep_fn, num_proc=10)  # type: ignore
@@ -185,11 +159,8 @@ def load_summarization_dataset(
         )
 
     def preprocess_fn(example):
-        inputs = example[text_key]
-        targets = example[summary_key]
-
-        if isinstance(model_config, T5Config):
-            inputs = ["summarize: " + x for x in inputs]
+        inputs = example[source_key]
+        targets = example[target_key]
 
         model_inputs = tokenizer(
             inputs,
@@ -210,7 +181,6 @@ def load_summarization_dataset(
         model_inputs["labels"] = labels["input_ids"]
         decoder_input_ids = data_utils.shift_tokens_right(
             labels["input_ids"],  # type: ignore
-            model_config.pad_token_id,
             model_config.decoder_start_token_id,
         )
         model_inputs["decoder_input_ids"] = decoder_input_ids

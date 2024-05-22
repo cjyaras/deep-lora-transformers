@@ -56,14 +56,10 @@ class GlueEvalMetric:
         return result
 
 
-class SummarizationEvalMetric:
+class NLGEvalMetric:
 
     def __init__(self, pretrain_model: ModelType):
-        assert pretrain_model in [
-            ModelType.BART,
-            ModelType.T5,
-        ], "Only BART or T5 are supported for summarization"
-        self.eval_metric = evaluate.load("rouge")
+        self.eval_metric = evaluate.combine(["bleu", "rouge", "meteor", "nist_mt"])
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(pretrain_model)
 
     @staticmethod
