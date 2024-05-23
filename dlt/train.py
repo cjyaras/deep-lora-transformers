@@ -11,12 +11,7 @@ from flax.training.train_state import TrainState
 from jax import Array
 from optax import GradientTransformation, Schedule
 from tqdm.auto import tqdm
-from transformers import (
-    FlaxAutoModel,
-    FlaxBartForConditionalGeneration,
-    FlaxT5ForConditionalGeneration,
-    GenerationConfig,
-)
+from transformers import FlaxAutoModel, FlaxT5ForConditionalGeneration, GenerationConfig
 
 from . import metrics, model_utils, models
 from .configs import TaskConfig, TaskType
