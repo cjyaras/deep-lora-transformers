@@ -19,9 +19,9 @@ def common_config():
     task_config.log_eval_steps = 20
     task_config.decay_ratio = 1.0
     task_config.lora_depth = 3
-    task_config.lora_gamma = 0.01
-    task_config.lora_adapt_type = configs.LoraAdaptType.ALL_DENSE
-    task_config.save_dir = f"../checkpoints/stsb_fewshot_16_narrow_vs_wide"
+    task_config.lora_gamma = 1e-2
+    task_config.lora_adapt_type = configs.LoraAdaptType.ONLY_QUERY_VALUE
+    task_config.save_dir = f"checkpoints/stsb_fewshot_16_narrow_vs_wide"
     return task_config
 
 
@@ -42,9 +42,7 @@ def main():
     run_experiments(
         rank=8, seeds=seeds, compress=False, random=False, learning_rate=1e-4
     )
-    run_experiments(
-        rank=8, seeds=seeds, compress=True, random=False, learning_rate=1e-2
-    )
+    run_experiments(rank=8, seeds=seeds, compress=True, random=True, learning_rate=1e-2)
 
 
 def read(experiment_path):
@@ -61,7 +59,7 @@ def read(experiment_path):
 
 
 def get_results():
-    experiment_dir = "../checkpoints/stsb_fewshot_16_narrow_vs_wide"
+    experiment_dir = "checkpoints/stsb_fewshot_16_narrow_vs_wide"
     runs = os.listdir(experiment_dir)
     random_run = [x for x in runs if "rank=8_samples=16" in x][0]
     compress_run = [x for x in runs if "compress_samples" in x][0]
@@ -161,4 +159,4 @@ if __name__ == "__main__":
     main()
 
     fig = plot_results()
-    fig.savefig("../figures/deep_lora_narrow_vs_wide.png", bbox_inches="tight", dpi=500)
+    fig.savefig("figures/deep_lora_narrow_vs_wide.png", bbox_inches="tight", dpi=500)

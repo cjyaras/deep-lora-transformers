@@ -78,4 +78,4 @@ class TaskConfig:
     # Logging hparams
     log_eval_steps: int = 200
     save_step_points: list = field(default_factory=list)
-    save_dir: str = "../checkpoints"
+    save_dir: str = "checkpoints"

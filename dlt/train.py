@@ -254,8 +254,8 @@ def create_compressed_lora_train_state(
     loss_fn = create_loss_fn(
         model_state,
         uncompressed_lora_state,
-        task_config.finetune_task_name != "stsb",
-        True,
+        task_config.finetune_task_name == "stsb",
+        False,
     )
 
     uncompressed_grads = jax.grad(loss_fn)(uncompressed_lora_state.params, batch)
@@ -272,26 +272,20 @@ def create_compressed_lora_train_state(
         return U, s, VT.T
 
     def get_left_right_factors(W1, W1_grad, e2e):
+
         m, n = W1.shape
-        swap = m < n
-        if swap:
-            W1 = W1.T
-            W1_grad = W1_grad.T
-            m, n = n, m
+        assert m == n, "Need square matrix at this point"
 
         half_rank = rank // 2
         Ugrad, _, Vgrad = svd(W1_grad)
         Va = W1.T @ Ugrad[:, half_rank:] / task_config.lora_init_scale
         Vb = Vgrad[:, half_rank:]
-        V0 = Va @ svd(np.concatenate([Va, -Vb], axis=1))[2][:half_rank, n:]
+        V0 = Va @ svd(np.concatenate([Va, -Vb], axis=1))[2][: Va.shape[1], n:]
         V = svd(V0)[0][:, ::-1]
         right = V[:, :rank]
         left = e2e @ right / (task_config.lora_init_scale**task_config.lora_depth)
 
-        if swap:
-            return right, left
-        else:
-            return left, right
+        return left, right
 
     compressed_lora_params_numpy = {}
 
@@ -301,6 +295,16 @@ def create_compressed_lora_train_state(
     for k, g in pbar:
         comp_mf_params = {}
         if not task_config.lora_random_factors:
+            m, n = uncompressed_lora_params_numpy[k]["W1"].shape
+
+            # if m != n:
+            #     # WL.T will act like W1
+            #     right, left = get_left_right_factors(
+            #         uncompressed_lora_params_numpy[k][f"W{task_config.lora_depth}"].T,
+            #         g[f"W{task_config.lora_depth}"].T,
+            #         uncompressed_e2e_numpy[k].T,
+            #     )
+            # else:
             left, right = get_left_right_factors(
                 uncompressed_lora_params_numpy[k]["W1"],
                 g["W1"],
@@ -348,4 +352,5 @@ def create_compressed_lora_train_state(
         ),
         params=compressed_lora_params,
         tx=tx,
+        dropout_rng=uncompressed_lora_state.dropout_rng,
     )

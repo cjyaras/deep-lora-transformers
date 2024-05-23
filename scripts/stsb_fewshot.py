@@ -24,7 +24,7 @@ def run_experiments(num_samples, depth, rank, learning_rate, seeds):
     task_config.num_train_steps = 500
     task_config.log_eval_steps = task_config.num_train_steps
     task_config.finetune_task_name = configs.GlueTaskName.STSB
-    task_config.save_dir = f"../checkpoints/stsb_fewshot/{num_samples}"
+    task_config.save_dir = f"checkpoints/stsb_fewshot/{num_samples}"
     task_config.lora_depth = depth
     task_config.lora_rank = rank
     task_config.learning_rate = learning_rate
@@ -42,7 +42,7 @@ def main():
 
 
 def get_results():
-    experiment_dir = "../checkpoints/stsb_fewshot"
+    experiment_dir = "checkpoints/stsb_fewshot"
     sample_sizes = [int(x) for x in os.listdir(experiment_dir)]
 
     diff_dict = {}
@@ -124,4 +124,4 @@ if __name__ == "__main__":
     main()
 
     fig = plot_results()
-    fig.savefig("../figures/fewshot_stsb.png", bbox_inches="tight", dpi=500)
+    fig.savefig("figures/fewshot_stsb.png", bbox_inches="tight", dpi=500)

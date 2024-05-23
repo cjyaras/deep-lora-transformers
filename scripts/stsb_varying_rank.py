@@ -29,7 +29,7 @@ def run_experiments(rank, depth, seeds, learning_rate):
     task_config.lora_rank = rank
     task_config.lora_compress = False
     task_config.learning_rate = learning_rate
-    task_config.save_dir = f"../checkpoints/stsb_fewshot_16_varying_rank/{rank}"
+    task_config.save_dir = f"checkpoints/stsb_fewshot_16_varying_rank/{rank}"
     finetune(task_config, seeds)
 
 
@@ -51,7 +51,7 @@ def main():
 
 
 def get_results():
-    experiment_dir = "../checkpoints/stsb_fewshot_16_varying_rank"
+    experiment_dir = "checkpoints/stsb_fewshot_16_varying_rank"
     ranks = [int(x) for x in os.listdir(experiment_dir)]
 
     diff_dict = {}
@@ -137,6 +137,4 @@ if __name__ == "__main__":
     main()
 
     fig = plot_results()
-    fig.savefig(
-        "../figures/fewshot_stsb_varying_rank.png", bbox_inches="tight", dpi=500
-    )
+    fig.savefig("figures/fewshot_stsb_varying_rank.png", bbox_inches="tight", dpi=500)

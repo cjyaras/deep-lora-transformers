@@ -25,7 +25,7 @@ class MatrixFactorization(nn.Module):
 
     def setup(self):
         assert self.depth >= 2, "Depth must be at least 2"
-        set_width = self.rank if self.rank else min(self.shape)
+        set_width = self.rank if self.rank else max(self.shape)
         misc_utils.check_rank(set_width, self.shape)
 
         if self.depth == 2:
@@ -101,7 +101,7 @@ class Lora(nn.Module):
             if self.compressed:
                 assert (
                     self.rank is not None
-                ), "rank must be specified for compressed LoRA"
+                ), "Rank must be specified for compressed LoRA"
                 mf = CompressedMatrixFactorization(
                     shape=shape,
                     init_scale=self.init_scale,
@@ -109,6 +109,7 @@ class Lora(nn.Module):
                     rank=self.rank,
                     name=flat_param_path,
                 )
+                assert self.depth >= 3, "Depth must be at least 3 for compressed LoRA"
             else:
                 mf = MatrixFactorization(
                     shape=shape,

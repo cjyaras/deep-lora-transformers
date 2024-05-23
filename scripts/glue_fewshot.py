@@ -23,7 +23,7 @@ def common_config(num_train_steps):
 def run_experiments(finetune_task_name, depth, rank, learning_rate, seeds):
     task_config = common_config(1000)
     task_config.finetune_task_name = finetune_task_name
-    task_config.save_dir = f"../checkpoints/glue_fewshot_1024/{finetune_task_name}"
+    task_config.save_dir = f"checkpoints/glue_fewshot_1024/{finetune_task_name}"
     task_config.lora_depth = depth
     task_config.lora_rank = rank
     task_config.learning_rate = learning_rate
@@ -32,7 +32,7 @@ def run_experiments(finetune_task_name, depth, rank, learning_rate, seeds):
 
 
 def get_results():
-    experiment_dir = "../checkpoints/glue_fewshot_1024"
+    experiment_dir = "checkpoints/glue_fewshot_1024"
     tasks = os.listdir(experiment_dir)
 
     diff_dict = {}

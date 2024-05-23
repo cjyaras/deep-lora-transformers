@@ -9,6 +9,6 @@ def cosine_angle(U, V):
 
 
 def check_rank(rank: int, shape: Tuple[int, int]):
-    assert rank <= min(
+    assert rank <= max(
         shape
     ), f"Rank {rank} must be no larger than outer dimensions {shape}"
