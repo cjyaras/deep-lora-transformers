@@ -40,7 +40,14 @@ GLUE_METRIC_DICT = {
     "rte": "eval_accuracy",
 }
 
-NLG_METRIC_LIST = ["eval_bleu", "eval_rougeL", "eval_meteor"]
+NLG_METRIC_LIST = [
+    "eval_bleu",
+    "eval_rouge1",
+    "eval_rouge2",
+    "eval_rougeL",
+    "eval_rougeLsum",
+    "eval_meteor",
+]
 
 
 class GlueEvalMetric:
