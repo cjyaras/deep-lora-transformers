@@ -36,9 +36,7 @@ def main():
     seeds = np.arange(20)
     for num_samples in [16, 64, 256]:
         run_experiments(num_samples, depth=2, rank=8, learning_rate=1e-4, seeds=seeds)
-        run_experiments(
-            num_samples, depth=3, rank=None, learning_rate=1e-4, seeds=seeds
-        )
+        run_experiments(num_samples, depth=3, rank=8, learning_rate=1e-4, seeds=seeds)
 
 
 def get_results():

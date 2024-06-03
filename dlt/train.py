@@ -58,7 +58,7 @@ class LoraState(TrainState):
     dropout_rng: Array
 
 
-def create_loss_fn(
+def create_lora_loss_fn(
     model_state: ModelState,
     lora_state: LoraState,
     is_regression: bool,
@@ -91,6 +91,29 @@ def create_loss_fn(
     return loss_fn
 
 
+def create_model_loss_fn(
+    model_state: ModelState,
+    is_regression: bool,
+) -> Callable:
+    "Returns function that computes loss for model state."
+
+    def loss_fn(model_params: ArrayTree, batch: dict[str, np.ndarray]) -> Array:
+        labels = batch.pop("labels")
+        logits = model_state.apply_fn(**batch, params=model_params, train=False)[0]
+        if is_regression:
+            loss = metrics.mse_loss(logits, labels)
+        else:
+            if "decoder_attention_mask" in batch:
+                loss = metrics.ce_loss(
+                    logits, labels, padding=batch["decoder_attention_mask"]
+                )
+            else:
+                loss = metrics.ce_loss(logits, labels)
+        return loss
+
+    return loss_fn
+
+
 def create_train_step_fn(
     task_config: TaskConfig, learning_rate_fn: optax.Schedule
 ) -> Callable:
@@ -103,7 +126,7 @@ def create_train_step_fn(
     ) -> tuple[LoraState, dict[str, Array]]:
         _, new_dropout_rng = jax.random.split(lora_state.dropout_rng)
         loss_and_grad_fn = jax.value_and_grad(
-            create_loss_fn(model_state, lora_state, is_regression, is_train=True)
+            create_lora_loss_fn(model_state, lora_state, is_regression, is_train=True)
         )
         loss, grads = loss_and_grad_fn(lora_state.params, batch)
         new_lora_state = lora_state.apply_gradients(grads=grads)
@@ -122,7 +145,7 @@ def create_validate_step_fn(task_config: TaskConfig) -> Callable:
     def validate_step_fn(
         model_state: ModelState, lora_state: LoraState, batch: dict[str, np.ndarray]
     ) -> dict[str, Array]:
-        loss_fn = create_loss_fn(model_state, lora_state, is_regression, is_train=False)
+        loss_fn = create_lora_loss_fn(model_state, lora_state, is_regression, is_train=False)
         loss = loss_fn(lora_state.params, batch)
         metrics = {"loss": loss}
         return metrics
@@ -246,7 +269,7 @@ def create_compressed_lora_train_state(
     )
 
     # Get gradient of uncompressed factors
-    loss_fn = create_loss_fn(
+    loss_fn = create_lora_loss_fn(
         model_state,
         uncompressed_lora_state,
         task_config.finetune_task_name == "stsb",
@@ -289,32 +312,22 @@ def create_compressed_lora_train_state(
 
     for k, g in pbar:
         comp_mf_params = {}
-        if not task_config.lora_random_factors:
-            m, n = uncompressed_lora_params_numpy[k]["W1"].shape
-
-            # if m != n:
-            #     # WL.T will act like W1
-            #     right, left = get_left_right_factors(
-            #         uncompressed_lora_params_numpy[k][f"W{task_config.lora_depth}"].T,
-            #         g[f"W{task_config.lora_depth}"].T,
-            #         uncompressed_e2e_numpy[k].T,
-            #     )
-            # else:
+        m, n = uncompressed_lora_params_numpy[k]["W1"].shape
+        if m != n:
+            # WL.T will act like W1
+            right, left = get_left_right_factors(
+                uncompressed_lora_params_numpy[k][f"W{task_config.lora_depth}"].T,
+                g[f"W{task_config.lora_depth}"].T,
+                uncompressed_e2e_numpy[k].T,
+            )
+        else:
             left, right = get_left_right_factors(
                 uncompressed_lora_params_numpy[k]["W1"],
                 g["W1"],
                 uncompressed_e2e_numpy[k],
             )
-            comp_mf_params["left"] = left
-            comp_mf_params["right"] = right
-        else:
-            m, n = uncompressed_e2e_numpy[k].shape
-            left = np.random.randn(m, rank)
-            left /= np.linalg.norm(left, axis=0, keepdims=True)
-            right = np.random.randn(n, rank)
-            right /= np.linalg.norm(right, axis=0, keepdims=True)
-            comp_mf_params["left"] = left
-            comp_mf_params["right"] = right
+        comp_mf_params["left"] = left
+        comp_mf_params["right"] = right
         mf_params = {}
         for w in g.keys():
             mf_params[w] = task_config.lora_init_scale * jnp.eye(rank)

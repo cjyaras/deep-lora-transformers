@@ -61,7 +61,7 @@ class GlueEvalMetric:
     def compute(self) -> Dict:
         result = self.eval_metric.compute()
         assert result is not None
-        result = {k: round(v * 100, 2) for k, v in result.items()}
+        # result = {k: round(v * 100, 2) for k, v in result.items()}
         return result
 
 
@@ -100,5 +100,5 @@ class NLGEvalMetric:
         result = self.eval_metric.compute()
         assert result is not None
         result.pop("precisions")
-        result = {k: round(v * 100, 2) for k, v in result.items()}
+        # result = {k: round(v * 100, 2) for k, v in result.items()}
         return result

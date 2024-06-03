@@ -63,7 +63,6 @@ class TaskConfig:
     lora_init_scale: float = 1e-3
     lora_rank: Optional[int] = None
     lora_compress: bool = False
-    lora_random_factors: bool = False
     lora_gamma: float = 0
 
     # Training hparams

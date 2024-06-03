@@ -61,10 +61,7 @@ class MatrixFactorization(nn.Module):
         self.layers = layers
 
     def __call__(self):
-        x = self.layers[0]
-        for w in self.layers[1:]:
-            x = w @ x
-        return x
+        return jnp.linalg.multi_dot(self.layers[::-1])
 
 
 class CompressedMatrixFactorization(nn.Module):

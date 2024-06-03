@@ -25,24 +25,19 @@ def common_config():
     return task_config
 
 
-def run_experiments(rank, seeds, compress, random, learning_rate):
+def run_experiments(rank, seeds, compress, learning_rate):
     task_config = common_config()
     task_config.lora_rank = rank
     task_config.lora_compress = compress
-    task_config.lora_random_factors = random
     task_config.learning_rate = learning_rate
     finetune(task_config, seeds)
 
 
 def main():
     seeds = [0]
-    run_experiments(
-        rank=None, seeds=seeds, compress=False, random=False, learning_rate=1e-4
-    )
-    run_experiments(
-        rank=8, seeds=seeds, compress=False, random=False, learning_rate=1e-4
-    )
-    run_experiments(rank=8, seeds=seeds, compress=True, random=True, learning_rate=1e-2)
+    run_experiments(rank=None, seeds=seeds, compress=False, learning_rate=1e-4)
+    run_experiments(rank=8, seeds=seeds, compress=False, learning_rate=1e-4)
+    run_experiments(rank=8, seeds=seeds, compress=True, learning_rate=1e-2)
 
 
 def read(experiment_path):

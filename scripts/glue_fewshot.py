@@ -84,7 +84,7 @@ def main():
         run_experiments(
             finetune_task_name,
             depth=3,
-            rank=None,
+            rank=8,
             learning_rate=1e-4,
             seeds=seeds,
         )
