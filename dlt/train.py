@@ -145,7 +145,9 @@ def create_validate_step_fn(task_config: TaskConfig) -> Callable:
     def validate_step_fn(
         model_state: ModelState, lora_state: LoraState, batch: dict[str, np.ndarray]
     ) -> dict[str, Array]:
-        loss_fn = create_lora_loss_fn(model_state, lora_state, is_regression, is_train=False)
+        loss_fn = create_lora_loss_fn(
+            model_state, lora_state, is_regression, is_train=False
+        )
         loss = loss_fn(lora_state.params, batch)
         metrics = {"loss": loss}
         return metrics
