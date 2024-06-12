@@ -1,6 +1,6 @@
-Implementation of Deep LoRA in JAX + Flax.
+Implementation of Deep LoRA in JAX/Flax.
 
-**This repo has been made publicly available for reproducibility, but still undergoing changes.**
+This repo has been made publicly available for reproducibility, but **still under construction.** Will release PyTorch version, improve interface/implementation, and add new features (hopefully) in the next couple months. 😊
 
 
 ## Setup
