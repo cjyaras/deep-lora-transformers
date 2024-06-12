@@ -1,4 +1,7 @@
-Implementation of Deep LoRA in Flax/JAX.
+Implementation of Deep LoRA in JAX + Flax.
+
+**This repo has been made publicly available for reproducibility, but still undergoing changes.**
+
 
 ## Setup
 1. Create and activate virtual environment
