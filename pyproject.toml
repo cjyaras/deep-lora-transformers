@@ -30,7 +30,7 @@ requires-python = ">=3.11"
 authors = [
   {name = "Can Yaras", email = "cjyaras@gmail.com"},
 ]
-description = "Deep Lora."
+description = "Deep LoRA."
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = []
