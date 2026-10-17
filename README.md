@@ -29,6 +29,8 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+Alternatively, with [uv](https://docs.astral.sh/uv/), `uv sync` creates the environment with the exact versions pinned in `uv.lock` (Python 3.11–3.13).
+
 ## Experiments
 All experiments from the paper can be found in the `scripts` folder. For example, to generate Figure 2 from the paper, simply run `python scripts/intro.py`.
 
@@ -37,3 +39,6 @@ All experiments from the paper can be found in the `scripts` folder. For example
 
 ## Known Issues
 - Setting `lora_compress=True` can cause OOM if the overparameterized LoRA is too large before compression. Set `lora_compress=False` in such cases. 
+- The code uses the Flax models from `transformers`, which were removed in `transformers` 5, hence `transformers<5`.
+- `jax>=0.10` removed `jnp.clip(a_min=, a_max=)`, which the Flax T5 model in `transformers` 4.x still calls (used by `scripts/nlg_fewshot.py`), hence `jax<0.10`.
+- The paper's experiments ran on a V100. Newer GPUs (e.g. A100) make JAX use TF32 for float32 matrix multiplications by default. In one test, `scripts/intro.py` collapsed after ~300 steps with that default but trained fine with `JAX_DEFAULT_MATMUL_PRECISION=highest` (full float32). If training collapses, try that.
