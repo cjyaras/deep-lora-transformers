@@ -93,5 +93,6 @@ def plot_results():
 if __name__ == "__main__":
     main()
 
+    os.makedirs("figures", exist_ok=True)
     fig = plot_results()
     fig.savefig("figures/fewshot_256_ranks.png", bbox_inches="tight", dpi=500)

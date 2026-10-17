@@ -136,5 +136,6 @@ def plot_results():
 if __name__ == "__main__":
     main()
 
+    os.makedirs("figures", exist_ok=True)
     fig = plot_results()
     fig.savefig("figures/fewshot_stsb_varying_rank.png", bbox_inches="tight", dpi=500)

@@ -10,6 +10,7 @@ from dlt.finetune import finetune
 
 
 def main():
+    os.makedirs("figures", exist_ok=True)
     task_config = configs.TaskConfig()
 
     task_config.task_type = configs.TaskType.GLUE
