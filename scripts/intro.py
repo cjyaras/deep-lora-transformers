@@ -43,7 +43,10 @@ def main():
 
     ## Left figure
 
-    model_params = models.create_pretrain_model_from_config(task_config).params  # type: ignore
+    model_config = models.create_pretrain_config_from_config(task_config)
+    model_params = models.create_pretrain_model_from_config(
+        task_config.pretrain_model, model_config
+    ).params  # type: ignore
     lora_model = models.create_lora_model_from_config(task_config, model_params)
     final_lora_params = logging_utils.load_lora_params(
         experiment_path, task_config.num_train_steps

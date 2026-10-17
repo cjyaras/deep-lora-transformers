@@ -52,7 +52,10 @@ def get_results():
     task_config_3 = logging_utils.get_task_config_from_json(
         experiment_path=os.path.join(experiment_dir, run_3)
     )
-    model_params = models.create_pretrain_model_from_config(task_config_2).params  # type: ignore
+    model_config = models.create_pretrain_config_from_config(task_config_2)
+    model_params = models.create_pretrain_model_from_config(
+        task_config_2.pretrain_model, model_config
+    ).params  # type: ignore
     lora_model_2 = models.create_lora_model_from_config(task_config_2, model_params)
     lora_model_3 = models.create_lora_model_from_config(task_config_3, model_params)
     run_2_e2e = lora_model_2.apply(
