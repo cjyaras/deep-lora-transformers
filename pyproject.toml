@@ -11,9 +11,9 @@ version = "0.0.1"
 dependencies = [
     "dataclasses-json",
     "scikit-learn",
-    "jax[cpu];platform_system=='Darwin'",
-    "jax[cuda12];platform_system=='Linux'",
-    "transformers",
+    "jax[cpu]<0.10;platform_system=='Darwin'",
+    "jax[cuda12]<0.10;platform_system=='Linux'",
+    "transformers>=4.57,<5",
     "datasets",
     "evaluate",
     "flax",
@@ -25,8 +25,11 @@ dependencies = [
     "tf-keras",
     "seaborn",
     "jupyter",
+    "chex",
+    "optax",
+    "tensorboard",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 authors = [
   {name = "Can Yaras", email = "cjyaras@gmail.com"},
 ]

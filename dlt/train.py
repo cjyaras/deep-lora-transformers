@@ -281,11 +281,11 @@ def create_compressed_lora_train_state(
     uncompressed_grads = jax.grad(loss_fn)(uncompressed_lora_state.params, batch)
 
     # Move to numpy (do compression on CPU to save GPU memory)
-    uncompressed_lora_params_numpy = jax.tree_map(
+    uncompressed_lora_params_numpy = jax.tree_util.tree_map(
         np.array, uncompressed_lora_state.params
     )
-    uncompressed_grads_numpy = jax.tree_map(np.array, uncompressed_grads)
-    uncompressed_e2e_numpy = jax.tree_map(np.array, uncompressed_e2e)
+    uncompressed_grads_numpy = jax.tree_util.tree_map(np.array, uncompressed_grads)
+    uncompressed_e2e_numpy = jax.tree_util.tree_map(np.array, uncompressed_e2e)
 
     def svd(A):
         U, s, VT = np.linalg.svd(A, full_matrices=True)
@@ -336,7 +336,9 @@ def create_compressed_lora_train_state(
         comp_mf_params["mf"] = mf_params
         compressed_lora_params_numpy[k] = comp_mf_params
 
-    compressed_lora_params = jax.tree_map(jnp.array, compressed_lora_params_numpy)
+    compressed_lora_params = jax.tree_util.tree_map(
+        jnp.array, compressed_lora_params_numpy
+    )
 
     inner_tx = uncompressed_lora_state.tx
     outer_tx = create_optimizer(

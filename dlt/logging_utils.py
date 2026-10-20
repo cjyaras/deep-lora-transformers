@@ -114,8 +114,6 @@ def get_experiment_name(task_config: TaskConfig, seed: int):
         experiment_name += f"_rank={task_config.lora_rank}"
     if task_config.lora_compress:
         experiment_name += "_compress"
-        if task_config.lora_random_factors:
-            experiment_name += "-random"
     if task_config.num_train_samples is not None:
         experiment_name += f"_samples={task_config.num_train_samples}"
     experiment_name += f"_lr={task_config.learning_rate}"

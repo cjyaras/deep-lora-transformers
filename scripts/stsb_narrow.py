@@ -153,5 +153,6 @@ def plot_results():
 if __name__ == "__main__":
     main()
 
+    os.makedirs("figures", exist_ok=True)
     fig = plot_results()
     fig.savefig("figures/deep_lora_narrow_vs_wide.png", bbox_inches="tight", dpi=500)

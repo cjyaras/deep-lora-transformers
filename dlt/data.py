@@ -128,7 +128,15 @@ def load_e2e_nlg_dataset(
     sample_seed: int,
 ) -> Tuple[Dataset, Dataset]:
 
-    raw_datasets = datasets.load_dataset("GEM/e2e_nlg")
+    # datasets>=4 no longer runs loading scripts, so load the Hub's parquet
+    # conversion, restricted to the standard splits (it also has challenge_* folders)
+    raw_datasets = datasets.load_dataset(
+        "GEM/e2e_nlg",
+        revision="refs/convert/parquet",
+        data_files={
+            s: f"default/{s}/*.parquet" for s in ["train", "validation", "test"]
+        },
+    )
     source_key = "meaning_representation"
     target_key = "target"
 
